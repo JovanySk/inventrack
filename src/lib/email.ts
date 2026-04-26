@@ -31,6 +31,13 @@ function createTransporter() {
     port,
     secure: port === 465,
     auth: { user, pass },
+    // ═══ FORZAR IPv4 (fix para Railway) ═══
+    dnsOptions: {
+      family: 4,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
   });
 }
 
@@ -369,18 +376,18 @@ function getAccountApprovedHTML(name: string, loginUrl: string): string {
 export async function sendConfirmationEmail(to: string, name: string, token: string): Promise<boolean> {
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   const confirmUrl = `${appUrl}/api/auth/confirm?token=${token}`;
-  
+
   const text = `Hola ${name},\n\nBienvenido a InvenTrack. Por favor confirma tu cuenta haciendo clic en el siguiente enlace:\n${confirmUrl}\n\nEste enlace expira en 24 horas.`;
-  
+
   return sendEmail(to, '✉️ Confirma tu cuenta en InvenTrack', getConfirmationHTML(name, confirmUrl), text);
 }
 
 export async function sendApprovalEmail(to: string, name: string): Promise<boolean> {
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
   const loginUrl = `${appUrl}/login`;
-  
+
   const text = `Hola ${name},\n\n¡Felicidades! Tu cuenta en InvenTrack ha sido aprobada. Ya puedes iniciar sesión en: ${loginUrl}`;
-  
+
   return sendEmail(to, '✅ Tu cuenta en InvenTrack fue aprobada', getAccountApprovedHTML(name, loginUrl), text);
 }
 
@@ -451,8 +458,8 @@ export async function sendLowStockAlert(products: LowStockProduct[]): Promise<bo
   </html>`;
 
   const subject = `⚠️ ${products.length} producto(s) con stock bajo — InvenTrack`;
-  
-  const text = `Alerta de Stock Bajo: ${products.length} productos requieren atención.\n\n` + 
+
+  const text = `Alerta de Stock Bajo: ${products.length} productos requieren atención.\n\n` +
     products.map(p => `- ${p.name} (${p.sku}): ${p.stock} ${p.unit} (Mínimo: ${p.minStock})`).join('\n');
 
   return sendEmail(toEmail, subject, html, text);
