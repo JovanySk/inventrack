@@ -3,6 +3,10 @@
 // 📧 SMTP Hostinger — inventracx.cloud
 // ═══════════════════════════════════════════════════════
 
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');  // ← FORZAR IPv4 GLOBAL
+
+
 import nodemailer from 'nodemailer';
 
 interface LowStockProduct {
@@ -31,16 +35,14 @@ function createTransporter() {
     port,
     secure: port === 465,
     auth: { user, pass },
-    // ═══ FORZAR IPv4 (fix para Railway) ═══
-    dnsOptions: {
-      family: 4,
-    },
     tls: {
       rejectUnauthorized: false,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
-
 // ─── Envío genérico ───
 async function sendEmail(to: string, subject: string, html: string, text: string): Promise<boolean> {
   const transporter = createTransporter();
