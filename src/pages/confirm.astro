@@ -1,5 +1,5 @@
 ---
-import Layout from '../layouts/Layout.astro';
+// Página de confirmación de cuenta — InvenTrack
 
 const url = new URL(Astro.request.url);
 const success = url.searchParams.get('success') === 'true';
@@ -125,7 +125,6 @@ const already = url.searchParams.get('already') === 'true';
   </style>
 </head>
 <body>
-  <!-- Fondo -->
   <div class="bg-scene">
     <div class="sphere" style="width:160px;height:160px;top:6%;left:10%;background:radial-gradient(circle at 30% 30%, rgba(180,80,255,0.35), rgba(120,30,200,0.05));animation-duration:8s;"></div>
     <div class="sphere" style="width:220px;height:220px;bottom:8%;right:5%;background:radial-gradient(circle at 40% 30%, rgba(200,80,255,0.25), rgba(100,20,180,0.03));animation-duration:10s;"></div>
@@ -148,7 +147,7 @@ const already = url.searchParams.get('already') === 'true';
         }
       </p>
       <a href="/login" class="btn btn-primary">
-        🚀 Ir a Iniciar Sesión
+         Ir a Iniciar Sesión
       </a>
     </div>
   ) : (
