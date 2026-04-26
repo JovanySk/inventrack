@@ -60,32 +60,51 @@ export const POST: APIRoute = async ({ request }) => {
             }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         }
 
-        // ─── Crear usuario ───
+        // ─── Crear usuario (dentro de una transacción lógica para manejar el error de email) ───
         const passwordHash = await bcrypt.hash(password, 12);
         const confirmationToken = generateToken();
         const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
 
-        const [newUser] = await db.insert(users).values({
-            name: name.trim(),
-            email: email.toLowerCase().trim(),
-            passwordHash,
-            role: 'empleado',
-            accountStatus: 'pendiente',
-            emailConfirmed: false,
-            confirmationToken,
-            tokenExpiresAt,
-            isActive: false,
-        }).returning({ id: users.id, name: users.name, email: users.email });
+        let newUser;
+        try {
+            const [insertedUser] = await db.insert(users).values({
+                name: name.trim(),
+                email: email.toLowerCase().trim(),
+                passwordHash,
+                role: 'empleado',
+                accountStatus: 'pendiente',
+                emailConfirmed: false,
+                confirmationToken,
+                tokenExpiresAt,
+                isActive: false,
+            }).returning({ id: users.id, name: users.name, email: users.email });
+            
+            newUser = insertedUser;
+        } catch (dbError: any) {
+            console.error('[Register] ❌ Error DB:', dbError);
+            return new Response(JSON.stringify({ error: 'Error al crear el usuario en la base de datos' }), { status: 500 });
+        }
 
         // ─── Enviar correo de confirmación ───
         const emailSent = await sendConfirmationEmail(newUser.email, newUser.name, confirmationToken);
 
-        console.log(`[Register] ✅ Usuario creado: ${newUser.email} (ID: ${newUser.id}) — Email enviado: ${emailSent}`);
+        if (!emailSent) {
+            // Si el email falla, borramos al usuario para evitar "usuarios fantasma"
+            await db.delete(users).where(eq(users.id, newUser.id));
+            console.error(`[Register] ❌ Falló el envío de email a ${newUser.email}. Usuario eliminado.`);
+            
+            return new Response(JSON.stringify({
+                error: 'No se pudo enviar el correo de confirmación. Por favor, verifica que tu correo sea válido e intenta de nuevo.'
+            }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        console.log(`[Register] ✅ Usuario creado y email enviado: ${newUser.email}`);
 
         return new Response(JSON.stringify({
             success: true,
-            message: '¡Cuenta creada! Revisa tu correo para confirmar tu cuenta.',
+            message: '¡Cuenta creada! Hemos enviado un enlace de confirmación a tu correo.',
         }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+
 
     } catch (error: any) {
         console.error('[Register] ❌ Error:', error);

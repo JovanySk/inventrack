@@ -21,7 +21,7 @@ interface LowStockProduct {
 // ─── Configuración SMTP ───
 function createTransporter() {
   const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT) || 465;
+  const port = Number(process.env.SMTP_PORT) || 587; // Cambiado a 587 por defecto
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
@@ -33,16 +33,19 @@ function createTransporter() {
   return nodemailer.createTransport({
     host,
     port,
-    secure: port === 465,
+    secure: port === 465, // Solo true para 465
     auth: { user, pass },
     tls: {
+      // Hostinger a veces necesita esto en entornos cloud
       rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: 5000, // 5 segundos máximo para conectar
+    greetingTimeout: 5000,
+    socketTimeout: 10000,
   });
 }
+
 // ─── Envío genérico ───
 async function sendEmail(to: string, subject: string, html: string, text: string): Promise<boolean> {
   const transporter = createTransporter();
