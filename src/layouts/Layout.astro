@@ -1,0 +1,296 @@
+---
+import { ViewTransitions } from 'astro:transitions';
+import '../styles/global.css';
+
+const userName  = Astro.cookies.get('inventrack-user')?.value  || 'Usuario';
+const userEmail = Astro.cookies.get('inventrack-email')?.value || '';
+const userRole  = Astro.cookies.get('inventrack-role')?.value  || 'demo';
+
+export interface Props {
+  title:        string;
+  description?: string;
+}
+
+const { title, description = 'Sistema de Gestión de Inventario — InvenTrack' } = Astro.props;
+const pathname = Astro.url.pathname;
+
+const navLinks = [
+  { href: '/',            label: 'Dashboard',   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
+  { href: '/productos',   label: 'Productos',   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 8.5 12 3 3 8.5m18 0v7L12 21m9-12.5L12 14m0 7V14m0 0L3 8.5"/></svg>` },
+  { href: '/categorias',  label: 'Categorías',  icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 10h16M4 14h10M4 18h7"/></svg>` },
+  { href: '/movimientos', label: 'Movimientos', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 16V4m0 0L3 8m4-4 4 4m6 0v12m0 0 4-4m-4 4-4-4"/></svg>` },
+  { href: '/xml',         label: 'XML',         icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6M9 13l-2 2 2 2m6-4 2 2-2 2m-2-5-2 6"/></svg>` },
+];
+
+if (userRole === 'admin') {
+  navLinks.push({ href: '/usuarios', label: 'Usuarios', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>` });
+}
+
+function isActive(href: string) {
+  if (href === '/') return pathname === '/';
+  return pathname.startsWith(href);
+}
+
+const initial = userName.charAt(0).toUpperCase();
+---
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content={description} />
+  <title>{title} — InvenTrack</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <ViewTransitions />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #07000f;
+      --surface:  rgba(255,255,255,0.025);
+      --border:   rgba(150,80,255,0.12);
+      --border-s: rgba(150,80,255,0.25);
+      --pink:     #ec4899;
+      --violet:   #a855f7;
+      --text:     #e2d9f3;
+      --muted:    rgba(180,150,255,0.45);
+      --sidebar-w: 220px;
+    }
+
+    html, body { height: 100%; font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+    /* ── Layout shell ────────────────────────── */
+    .shell { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ── Sidebar ─────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: rgba(8,0,20,0.97);
+      border-right: 1px solid var(--border);
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Logo */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 20px 18px;
+      border-bottom: 1px solid var(--border);
+      text-decoration: none;
+    }
+    .logo-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 900;
+      color: #fff;
+      flex-shrink: 0;
+      box-shadow: 0 4px 16px rgba(168,85,247,0.35);
+    }
+    .logo-text { display: flex; flex-direction: column; }
+    .logo-name { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: -0.2px; line-height: 1.1; }
+    .logo-sub  { font-size: 10px; color: var(--muted); font-weight: 400; margin-top: 1px; }
+
+    /* Nav */
+    nav { flex: 1; padding: 14px 10px; overflow-y: auto; }
+    .nav-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(150,100,255,0.35);
+      padding: 0 10px;
+      margin-bottom: 6px;
+      margin-top: 4px;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      transition: all 0.18s ease;
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+      cursor: pointer;
+    }
+    .nav-link svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.6; transition: opacity 0.18s; }
+    .nav-link:hover { color: var(--text); background: rgba(150,80,255,0.07); }
+    .nav-link:hover svg { opacity: 0.9; }
+    .nav-link.active {
+      color: #fff;
+      background: linear-gradient(135deg, rgba(168,85,247,0.18), rgba(236,72,153,0.1));
+      border-color: rgba(168,85,247,0.22);
+      box-shadow: 0 0 16px rgba(168,85,247,0.08);
+    }
+    .nav-link.active svg { opacity: 1; color: var(--violet); }
+    .nav-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--pink);
+      margin-left: auto;
+      box-shadow: 0 0 6px rgba(236,72,153,0.7);
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+    /* User footer */
+    .user-bar {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .user-avatar {
+      width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: #fff;
+      box-shadow: 0 2px 10px rgba(168,85,247,0.3);
+    }
+    .user-info { flex: 1; min-width: 0; }
+    .user-name  { font-size: 12px; font-weight: 600; color: #e2d9f3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-role  { font-size: 10px; color: var(--muted); }
+    .logout-btn {
+      background: none; border: none; cursor: pointer;
+      color: rgba(180,150,255,0.35); transition: color 0.2s;
+      padding: 4px; border-radius: 6px; display: flex; align-items: center;
+    }
+    .logout-btn:hover { color: #f87171; }
+    .logout-btn svg { width: 15px; height: 15px; }
+
+    /* ── Main area ───────────────────────────── */
+    .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+    /* Top bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      height: 56px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      background: rgba(8,0,20,0.6);
+      backdrop-filter: blur(16px);
+    }
+    .page-title { font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .clock {
+      font-size: 11px; font-family: 'Inter', monospace; color: var(--muted);
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 4px 10px; border-radius: 8px;
+    }
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 8px;
+      background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.18);
+      font-size: 11px; font-weight: 600; color: #34d399;
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: #34d399;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    /* Content */
+    .content { flex: 1; overflow-y: auto; padding: 28px; }
+
+    /* Scrollbar */
+    .content::-webkit-scrollbar { width: 4px; }
+    .content::-webkit-scrollbar-track { background: transparent; }
+    .content::-webkit-scrollbar-thumb { background: rgba(150,80,255,0.2); border-radius: 99px; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+      <a class="logo" href="/">
+        <div class="logo-icon">I</div>
+        <div class="logo-text">
+          <span class="logo-name">InvenTrack</span>
+          <span class="logo-sub">Gestión de Inventario</span>
+        </div>
+      </a>
+
+      <nav>
+        <p class="nav-label">Principal</p>
+        {navLinks.map(link => (
+          <a
+            href={link.href}
+            class={`nav-link${isActive(link.href) ? ' active' : ''}`}
+          >
+            <span set:html={link.icon} />
+            {link.label}
+            {isActive(link.href) && <span class="nav-dot" />}
+          </a>
+        ))}
+      </nav>
+
+      <div class="user-bar">
+        <div class="user-avatar">{initial}</div>
+        <div class="user-info">
+          <div class="user-name">{userName}</div>
+          <div class="user-role">{userEmail || 'Administrador'}</div>
+        </div>
+        <a href="/api/logout" class="logout-btn" title="Cerrar sesión">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6A2.25 2.25 0 0 0 5.25 5.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"/>
+          </svg>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-area">
+
+      <header class="topbar">
+        <h1 class="page-title">{title}</h1>
+        <div class="topbar-right">
+          <span class="clock" id="clock"></span>
+          <div class="status-pill">
+            <span class="status-dot"></span>
+            En línea
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <slot />
+      </main>
+
+    </div>
+  </div>
+
+  <script>
+    const el = document.getElementById('clock');
+    function tick() { if (el) el.textContent = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }); }
+    tick();
+    setInterval(tick, 1000);
+
+    // Si el usuario llega a cualquier página interna, significa que el inicio de sesión fue exitoso.
+    // Limpiamos los intentos fallidos para que al cerrar sesión no aparezcan "intentos fantasma".
+    sessionStorage.removeItem('login-attempts');
+    sessionStorage.removeItem('login-locked');
+  </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+version: '3.8'
+
+# Docker Compose para producción en AWS EC2
+# Usar con: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  app:
+    image: inventario-app:latest
+    container_name: inventario-app-prod
+    ports:
+      - "80:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}       # RDS endpoint en AWS
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      ALERT_EMAIL: ${ALERT_EMAIL}
+      NODE_ENV: production
+    restart: always
+    networks:
+      - inventario-net
+
+networks:
+  inventario-net:
+    driver: bridge

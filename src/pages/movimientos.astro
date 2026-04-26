@@ -1,0 +1,176 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Movimientos de Stock">
+<style is:global>
+  .toolbar { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
+
+  .filter-select {
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(150,80,255,0.18);
+    background: rgba(255,255,255,0.03);
+    color: #e2d9f3;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .filter-select:focus { border-color: rgba(168,85,247,0.5); }
+  .filter-select option { background: #0f0820; }
+
+  .refresh-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 10px;
+    border: 1px solid rgba(150,80,255,0.18);
+    background: rgba(255,255,255,0.03);
+    color: rgba(180,150,255,0.7);
+    font-size: 13px; font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .refresh-btn:hover { border-color: rgba(168,85,247,0.4); color: #e2d9f3; background: rgba(150,80,255,0.08); }
+  .refresh-btn svg { width: 14px; height: 14px; }
+
+  .table-wrap {
+    border-radius: 14px;
+    border: 1px solid rgba(150,80,255,0.12);
+    overflow: hidden;
+    background: rgba(255,255,255,0.02);
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+  thead tr {
+    border-bottom: 1px solid rgba(150,80,255,0.12);
+    background: rgba(150,80,255,0.05);
+  }
+  thead th {
+    text-align: left; padding: 11px 16px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(180,150,255,0.45);
+  }
+  thead th.center { text-align: center; }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(150,80,255,0.07);
+    transition: background 0.15s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(150,80,255,0.05); }
+
+  td { padding: 11px 16px; vertical-align: middle; }
+  td.center { text-align: center; }
+
+  .td-id { font-size: 11px; font-family: monospace; color: rgba(180,150,255,0.4); }
+  .td-name { font-weight: 500; color: #e2d9f3; }
+  .td-qty-in  { font-weight: 700; font-family: monospace; color: #34d399; }
+  .td-qty-out { font-weight: 700; font-family: monospace; color: #f87171; }
+  .td-num { font-family: monospace; color: rgba(180,150,255,0.6); }
+  .td-reason { color: rgba(180,150,255,0.55); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .td-date { font-size: 11px; color: rgba(180,150,255,0.4); white-space: nowrap; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 99px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  .badge-entrada { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
+  .badge-salida  { background: rgba(248,113,113,0.12); color: #f87171; border: 1px solid rgba(248,113,113,0.2); }
+  .badge-ajuste  { background: rgba(96,165,250,0.12);  color: #93c5fd; border: 1px solid rgba(96,165,250,0.2); }
+
+  .table-footer {
+    padding: 10px 16px;
+    border-top: 1px solid rgba(150,80,255,0.08);
+    font-size: 11px; color: rgba(180,150,255,0.35);
+  }
+
+  .empty-state {
+    text-align: center; padding: 48px 16px;
+    color: rgba(180,150,255,0.35); font-size: 13px;
+  }
+</style>
+
+  <div class="toolbar">
+    <select id="typeFilter" class="filter-select">
+      <option value="">Todos los tipos</option>
+      <option value="entrada">Entradas</option>
+      <option value="salida">Salidas</option>
+      <option value="ajuste">Ajustes</option>
+    </select>
+    <button onclick="loadMovements()" class="refresh-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+      Actualizar
+    </button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Producto</th>
+          <th>Tipo</th>
+          <th class="center">Cantidad</th>
+          <th class="center">Stock Anterior</th>
+          <th class="center">Stock Nuevo</th>
+          <th>Razón</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody id="movTable">
+        <tr><td colspan="8" class="empty-state">Cargando...</td></tr>
+      </tbody>
+    </table>
+    <div id="movFooter" class="table-footer"></div>
+  </div>
+
+  <script>
+    let allMovements: any[] = [];
+
+    async function loadMovements() {
+      const res  = await fetch('/api/movements?limit=100');
+      allMovements = await res.json();
+      renderTable();
+    }
+
+    function renderTable() {
+      const f    = (document.getElementById('typeFilter') as HTMLSelectElement).value;
+      const data = f ? allMovements.filter((m: any) => m.type === f) : allMovements;
+      const tbody = document.getElementById('movTable')!;
+
+      if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No hay movimientos registrados</td></tr>`;
+        document.getElementById('movFooter')!.textContent = '';
+        return;
+      }
+
+      const badge = (t: string) =>
+        t === 'entrada' ? `<span class="badge badge-entrada">↑ Entrada</span>`
+        : t === 'salida' ? `<span class="badge badge-salida">↓ Salida</span>`
+        : `<span class="badge badge-ajuste">⊙ Ajuste</span>`;
+
+      tbody.innerHTML = data.map((m: any) => `
+        <tr>
+          <td class="td-id">#${m.id}</td>
+          <td class="td-name">${m.productName ?? '—'}</td>
+          <td>${badge(m.type)}</td>
+          <td class="center ${m.type === 'salida' ? 'td-qty-out' : 'td-qty-in'}">
+            ${m.type === 'salida' ? '−' : '+'}${m.quantity}
+          </td>
+          <td class="center td-num">${m.previousStock}</td>
+          <td class="center td-num" style="color:#e2d9f3;font-weight:600">${m.newStock}</td>
+          <td class="td-reason">${m.reason ?? '—'}</td>
+          <td class="td-date">${new Date(m.createdAt).toLocaleString('es-MX', {dateStyle:'short',timeStyle:'short'})}</td>
+        </tr>`).join('');
+
+      document.getElementById('movFooter')!.textContent = `${data.length} registro${data.length !== 1 ? 's' : ''}`;
+    }
+
+    document.getElementById('typeFilter')!.addEventListener('change', renderTable);
+    Object.assign(window, { loadMovements });
+    loadMovements();
+  </script>
+</Layout>

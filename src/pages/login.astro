@@ -1,0 +1,1346 @@
+---
+const cookie = Astro.cookies.get('inventrack-session');
+if (cookie?.value === 'authenticated') {
+  return Astro.redirect('/');
+}
+
+// Patrón PRG: el POST siempre redirige, el error viene en ?e=
+import { EMAIL_REGEX } from '@/lib/validation';
+
+import bcrypt from 'bcryptjs';
+import { db } from '@/db';
+import { users, rolePermissions } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { SignJWT } from 'jose';
+import { logger } from '@/lib/logger';
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'super_secret_dev_key_only');
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const email = form.get('email')?.toString()?.trim() || '';
+  const password = form.get('password')?.toString() || '';
+
+  if (!email || !password)              return Astro.redirect('/login?e=required');
+  if (!EMAIL_REGEX.test(email))         return Astro.redirect('/login?e=invalid-email');
+
+  const [user] = await db.select().from(users).where(eq(users.email, email));
+
+if (!user)                            return Astro.redirect('/login?e=not-found');
+
+// ─── NUEVO: Verificar si el email está confirmado ───
+if (user.emailConfirmed === false)    return Astro.redirect('/login?e=not-confirmed');
+
+// Verificar si la cuenta está activa
+if (!user.isActive)                   return Astro.redirect('/login?e=inactive');
+
+  // Verificar si la cuenta está bloqueada
+  if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+    return Astro.redirect('/login?e=locked');
+  }
+
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) {
+    // Manejar intentos fallidos
+    const attempts = (user.failedAttempts || 0) + 1;
+    const lockTime = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+    
+    await db.update(users).set({ failedAttempts: attempts, lockedUntil: lockTime }).where(eq(users.id, user.id));
+    
+    if (attempts >= 5) {
+      logger.warn(`Cuenta bloqueada por fuerza bruta: ${email}`);
+      return Astro.redirect('/login?e=locked');
+    }
+    return Astro.redirect('/login?e=wrong-pass');
+  }
+
+  // Resetear intentos
+  await db.update(users).set({ failedAttempts: 0, lockedUntil: null }).where(eq(users.id, user.id));
+
+  // Obtener permisos del rol
+  const rolePerms = await db.select({ permission: rolePermissions.permissionId })
+    .from(rolePermissions)
+    .where(eq(rolePermissions.roleName, user.role));
+  const permissions = rolePerms.map(p => p.permission);
+
+  // Generar JWT
+  const token = await new SignJWT({ 
+    id: user.id, 
+    email: user.email, 
+    role: user.role, 
+    name: user.name,
+    permissions 
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('8h')
+    .sign(JWT_SECRET);
+
+  const isProd = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
+
+  Astro.cookies.set('inventrack-token', token, {
+    path: '/', maxAge: 60 * 60 * 8, httpOnly: true, sameSite: 'lax', secure: isProd
+  });
+  
+  // Guardamos datos UI en cookies seguras (sin httpOnly para que las lea el frontend si es necesario, o en JWT)
+  // Pero para mantener compatibilidad con Layout actual:
+  Astro.cookies.set('inventrack-user', user.name, { path: '/', maxAge: 60 * 60 * 8, sameSite: 'lax', secure: isProd });
+  Astro.cookies.set('inventrack-email', user.email, { path: '/', maxAge: 60 * 60 * 8, sameSite: 'lax', secure: isProd });
+  Astro.cookies.set('inventrack-role', user.role, { path: '/', maxAge: 60 * 60 * 8, sameSite: 'lax', secure: isProd });
+  
+  logger.info(`Login exitoso: ${email}`);
+  return Astro.redirect('/');
+}
+
+// Leer error del query param (GET después del redirect)
+const ERR_MESSAGES: Record<string, string> = {
+  'required':      'Todos los campos son obligatorios.',
+  'invalid-email': 'Ingresa un correo electrónico válido.',
+  'not-found':     'Este correo no está registrado en el sistema.',
+  'wrong-pass':    'Contraseña incorrecta. Verifica e intenta de nuevo.',
+  'locked':        'Cuenta bloqueada temporalmente. Intenta en 15 minutos.',
+  'not-confirmed': '📧 Tu correo no ha sido confirmado. Revisa tu bandeja de entrada.',
+  'inactive':      'Tu cuenta está desactivada. Contacta al administrador.',
+};
+const errorCode = new URL(Astro.request.url).searchParams.get('e') || '';
+const errorMsg  = ERR_MESSAGES[errorCode] || '';
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iniciar Sesión — InvenTrack</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: #07000f;
+    }
+
+    /* ══════════════════════════════════════
+       FONDO ANIMADO
+       ══════════════════════════════════════ */
+    .bg-scene {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse at 15% 50%, rgba(120, 40, 200, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 20%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 90%, rgba(80, 20, 180, 0.1) 0%, transparent 50%),
+        #07000f;
+    }
+
+    .sphere {
+      position: absolute;
+      border-radius: 50%;
+      animation: floatSphere linear infinite;
+    }
+
+    @keyframes floatSphere {
+      0%   { transform: translateY(0px) rotate(0deg); }
+      33%  { transform: translateY(-20px) rotate(5deg); }
+      66%  { transform: translateY(10px) rotate(-3deg); }
+      100% { transform: translateY(0px) rotate(0deg); }
+    }
+
+    .star {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: white;
+      border-radius: 50%;
+      animation: twinkle ease-in-out infinite;
+    }
+
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.1; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.5); }
+    }
+
+    /* ══════════════════════════════════════
+       CARD PRINCIPAL
+       ══════════════════════════════════════ */
+    .login-wrapper {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 440px;
+      margin: 20px;
+    }
+
+    .login-card {
+      padding: 44px 40px;
+      border-radius: 28px;
+      backdrop-filter: blur(24px);
+      background: linear-gradient(160deg,
+        rgba(120, 50, 255, 0.18) 0%,
+        rgba(80, 20, 200, 0.12) 40%,
+        rgba(40, 10, 120, 0.08) 100%);
+      border: 1px solid rgba(150, 80, 255, 0.15);
+      box-shadow:
+        0 0 80px rgba(120, 50, 255, 0.1),
+        0 30px 60px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: all 0.3s ease;
+    }
+
+    .login-card:hover {
+      border-color: rgba(150, 80, 255, 0.25);
+      box-shadow:
+        0 0 100px rgba(120, 50, 255, 0.15),
+        0 30px 60px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    /* ══════════════════════════════════════
+       LOGO
+       ══════════════════════════════════════ */
+    .logo-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+
+    .logo-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 900;
+      color: #ffffff !important;
+      background: linear-gradient(135deg, #a855f7, #ec4899) !important;
+      box-shadow: 0 8px 40px rgba(168, 85, 247, 0.4);
+      margin-bottom: 20px;
+      animation: logoPulse 3s ease-in-out infinite;
+      -webkit-text-fill-color: #ffffff;
+    }
+
+    @keyframes logoPulse {
+      0%, 100% { box-shadow: 0 8px 40px rgba(168, 85, 247, 0.4); }
+      50% { box-shadow: 0 8px 60px rgba(168, 85, 247, 0.6), 0 0 20px rgba(236, 72, 153, 0.3); }
+    }
+
+    .logo-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-subtitle {
+      color: rgba(200, 180, 255, 0.4);
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 4px;
+    }
+
+    /* ══════════════════════════════════════
+       ALERTAS
+       ══════════════════════════════════════ */
+    .alert {
+      padding: 14px 18px;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 10px;
+      animation: slideDown 0.4s ease-out;
+    }
+
+    .alert-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.08);
+    }
+
+    .alert-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ══════════════════════════════════════
+       FORMULARIO
+       ══════════════════════════════════════ */
+    .form-group {
+      margin-bottom: 22px;
+    }
+
+    .form-label {
+      display: block;
+      color: rgba(200, 180, 255, 0.7);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 15px;
+      opacity: 0.4;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 15px 16px 15px 46px;
+      border-radius: 14px;
+      border: 1.5px solid rgba(150, 80, 255, 0.1);
+      background: rgba(10, 5, 25, 0.7);
+      color: white;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      outline: none;
+    }
+
+    .form-input::placeholder {
+      color: rgba(150, 130, 200, 0.3);
+      font-weight: 400;
+    }
+
+    .form-input:focus {
+      border-color: rgba(168, 85, 247, 0.5);
+      box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.08), 0 0 30px rgba(168, 85, 247, 0.08);
+      background: rgba(15, 8, 35, 0.9);
+    }
+
+    .form-input:focus + .input-icon,
+    .form-input:focus ~ .input-icon {
+      opacity: 0.8;
+    }
+
+    .form-input.input-error {
+      border-color: rgba(239, 68, 68, 0.5) !important;
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.08), 0 0 20px rgba(239, 68, 68, 0.08) !important;
+      animation: shakeInput 0.5s ease-in-out;
+    }
+
+    @keyframes shakeInput {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-5px); }
+      80% { transform: translateX(5px); }
+    }
+
+    /* Botón ver contraseña */
+    .toggle-pass {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: rgba(200, 180, 255, 0.3);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px;
+      transition: color 0.2s;
+    }
+    .toggle-pass:hover { color: rgba(200, 180, 255, 0.7); }
+
+    /* Validación en tiempo real */
+    .input-status {
+      font-size: 11px;
+      margin-top: 6px;
+      font-weight: 500;
+      display: none;
+    }
+    .input-status.show { display: block; }
+    .input-status.valid { color: rgba(52, 211, 153, 0.7); }
+    .input-status.invalid { color: rgba(251, 113, 133, 0.7); }
+
+    /* ══════════════════════════════════════
+       BOTÓN LOGIN
+       ══════════════════════════════════════ */
+    .btn-login {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: linear-gradient(135deg, #9333ea, #ec4899);
+      box-shadow: 0 6px 30px rgba(147, 51, 234, 0.35);
+      letter-spacing: 0.3px;
+      position: relative;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .btn-login:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 40px rgba(147, 51, 234, 0.5), 0 0 20px rgba(236, 72, 153, 0.2);
+    }
+
+    .btn-login:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-login:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-login .btn-text { transition: opacity 0.2s; }
+    .btn-login .btn-loader {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .btn-login.loading .btn-text { opacity: 0; }
+    .btn-login.loading .btn-loader { opacity: 1; }
+
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Shimmer en el botón */
+    .btn-login::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+      transition: left 0.5s;
+    }
+    .btn-login:hover::before { left: 100%; }
+
+    /* ══════════════════════════════════════
+       BLOQUEO POR INTENTOS
+       ══════════════════════════════════════ */
+    .lockout-bar {
+      height: 3px;
+      border-radius: 99px;
+      margin-top: 16px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.05);
+      display: none;
+    }
+    .lockout-bar.show { display: block; }
+    .lockout-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.4s ease;
+      background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+    }
+
+    .attempts-text {
+      font-size: 11px;
+      color: rgba(251, 191, 36, 0.6);
+      text-align: center;
+      margin-top: 8px;
+      display: none;
+    }
+    .attempts-text.show { display: block; }
+
+    /* ══════════════════════════════════════
+       DEMO CREDENTIALS
+       ══════════════════════════════════════ */
+    .demo-section {
+      margin-top: 28px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .demo-label {
+      color: rgba(200, 180, 255, 0.3);
+      font-size: 10px;
+      text-align: center;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 12px;
+    }
+
+    .demo-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .demo-btn {
+      background: rgba(168, 85, 247, 0.06);
+      border: 1px solid rgba(168, 85, 247, 0.12);
+      color: rgba(196, 181, 253, 0.7);
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .demo-btn:hover {
+      background: rgba(168, 85, 247, 0.15);
+      border-color: rgba(168, 85, 247, 0.3);
+      color: white;
+      transform: translateY(-1px);
+    }
+
+    /* ══════════════════════════════════════
+       TOAST NOTIFICATIONS
+       ══════════════════════════════════════ */
+    .toast-container {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 14px 20px;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      backdrop-filter: blur(16px);
+      min-width: 300px;
+    }
+
+    .toast-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #fca5a5;
+      box-shadow: 0 8px 30px rgba(239, 68, 68, 0.15);
+    }
+
+    .toast-warning {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      color: #fcd34d;
+      box-shadow: 0 8px 30px rgba(245, 158, 11, 0.15);
+    }
+
+    .toast-success {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #6ee7b7;
+      box-shadow: 0 8px 30px rgba(16, 185, 129, 0.15);
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-20px); }
+    }
+
+    .toast-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      border-radius: 0 0 14px 14px;
+      animation: toastProgress 3s linear forwards;
+    }
+    .toast-error .toast-progress { background: #ef4444; }
+    .toast-warning .toast-progress { background: #f59e0b; }
+    .toast-success .toast-progress { background: #10b981; }
+
+    @keyframes toastProgress {
+      from { width: 100%; }
+      to { width: 0%; }
+    }
+
+    /* ══════════════════════════════════════
+       LINKS SECUNDARIOS
+       ══════════════════════════════════════ */
+    .auth-links {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+    }
+    .auth-link {
+      background: none;
+      border: none;
+      color: rgba(180,140,255,0.6);
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0;
+      transition: color 0.2s;
+      text-decoration: none;
+    }
+    .auth-link:hover { color: rgba(200,160,255,0.95); text-decoration: underline; }
+
+    /* ══════════════════════════════════════
+       MODAL
+       ══════════════════════════════════════ */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal-box {
+      width: 100%;
+      max-width: 400px;
+      padding: 36px 32px;
+      border-radius: 24px;
+      background: linear-gradient(160deg, rgba(90,30,200,0.25) 0%, rgba(40,10,120,0.15) 100%);
+      border: 1px solid rgba(150,80,255,0.2);
+      box-shadow: 0 0 80px rgba(120,50,255,0.15), 0 30px 60px rgba(0,0,0,0.6);
+      backdrop-filter: blur(24px);
+      transform: scale(0.92) translateY(12px);
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease;
+      opacity: 0;
+    }
+    .modal-overlay.open .modal-box { transform: scale(1) translateY(0); opacity: 1; }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: white;
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+    .modal-subtitle {
+      font-size: 13px;
+      color: rgba(200,180,255,0.45);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .modal-close {
+      position: absolute;
+      top: 16px; right: 20px;
+      background: none; border: none;
+      color: rgba(200,180,255,0.35);
+      font-size: 22px; cursor: pointer;
+      transition: color 0.2s;
+      line-height: 1;
+    }
+    .modal-close:hover { color: rgba(200,180,255,0.8); }
+    .modal-box { position: relative; }
+
+    .modal-field {
+      margin-bottom: 16px;
+    }
+    .modal-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: rgba(200,180,255,0.6);
+      margin-bottom: 7px;
+    }
+    .modal-input {
+      width: 100%;
+      padding: 13px 16px;
+      border-radius: 12px;
+      border: 1.5px solid rgba(150,80,255,0.12);
+      background: rgba(10,5,25,0.6);
+      color: white;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+      transition: all 0.25s;
+      outline: none;
+    }
+    .modal-input::placeholder { color: rgba(150,130,200,0.3); }
+    .modal-input:focus {
+      border-color: rgba(168,85,247,0.5);
+      box-shadow: 0 0 0 3px rgba(168,85,247,0.1);
+      background: rgba(15,8,35,0.9);
+    }
+    .modal-input.error { border-color: rgba(239,68,68,0.5) !important; }
+
+    .modal-btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: white;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: all 0.3s ease;
+      background: linear-gradient(135deg, #9333ea, #ec4899);
+      box-shadow: 0 5px 25px rgba(147,51,234,0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    .modal-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 35px rgba(147,51,234,0.45); }
+    .modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .modal-msg {
+      font-size: 12px;
+      font-weight: 500;
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      display: none;
+    }
+    .modal-msg.show { display: block; }
+    .modal-msg.success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: #6ee7b7; }
+    .modal-msg.error   { background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2);  color: #fca5a5; }
+
+    .modal-divider { height: 1px; background: rgba(255,255,255,0.05); margin: 20px 0; }
+    .modal-footer-link {
+      text-align: center;
+      font-size: 12px;
+      color: rgba(200,180,255,0.4);
+    }
+    .modal-footer-link button {
+      background: none; border: none;
+      color: rgba(180,140,255,0.7);
+      font-size: 12px; font-family: 'Inter', sans-serif; font-weight: 600;
+      cursor: pointer; text-decoration: underline;
+    }
+    .modal-footer-link button:hover { color: white; }
+
+    .pass-strength { height: 3px; border-radius: 99px; margin-top: 6px; transition: width 0.3s, background 0.3s; width: 0%; }
+
+    /* ══════════════════════════════════════
+       RESPONSIVE
+       ══════════════════════════════════════ */
+    @media (max-width: 480px) {
+      .login-card { padding: 32px 24px; border-radius: 22px; }
+      .logo-title { font-size: 24px; }
+      .demo-buttons { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Fondo animado -->
+  <div class="bg-scene">
+    <div class="sphere" style="width:160px;height:160px;top:6%;left:10%;background:radial-gradient(circle at 30% 30%, rgba(180,80,255,0.35), rgba(120,30,200,0.05));animation-duration:8s;"></div>
+    <div class="sphere" style="width:90px;height:90px;top:18%;right:12%;background:radial-gradient(circle at 30% 30%, rgba(236,72,153,0.3), rgba(180,40,200,0.05));animation-duration:6s;animation-delay:1s;"></div>
+    <div class="sphere" style="width:220px;height:220px;bottom:8%;left:5%;background:radial-gradient(circle at 40% 30%, rgba(200,80,255,0.25), rgba(100,20,180,0.03));animation-duration:10s;animation-delay:0.5s;"></div>
+    <div class="sphere" style="width:120px;height:120px;bottom:15%;right:8%;background:radial-gradient(circle at 30% 30%, rgba(160,60,240,0.3), rgba(80,20,160,0.05));animation-duration:7s;animation-delay:2s;"></div>
+    <div class="sphere" style="width:55px;height:55px;top:50%;left:3%;background:radial-gradient(circle at 30% 30%, rgba(200,100,255,0.35), rgba(120,40,200,0.05));animation-duration:5s;animation-delay:1.5s;"></div>
+    <div class="sphere" style="width:70px;height:70px;top:35%;right:20%;background:radial-gradient(circle at 30% 30%, rgba(236,72,153,0.25), rgba(180,40,200,0.05));animation-duration:9s;animation-delay:3s;"></div>
+    <div class="sphere" style="width:180px;height:180px;top:55%;right:3%;background:radial-gradient(circle at 35% 25%, rgba(130,50,220,0.2), rgba(80,20,160,0.03));animation-duration:11s;animation-delay:0.8s;"></div>
+    <div class="sphere" style="width:40px;height:40px;top:80%;left:40%;background:radial-gradient(circle at 30% 30%, rgba(236,72,153,0.35), rgba(180,40,200,0.05));animation-duration:4s;animation-delay:2.5s;"></div>
+
+    <!-- Estrellas -->
+    <div class="star" style="top:3%;left:15%;animation-duration:3s;"></div>
+    <div class="star" style="top:10%;left:55%;animation-duration:4s;animation-delay:1s;"></div>
+    <div class="star" style="top:22%;left:30%;animation-duration:2.5s;animation-delay:0.5s;"></div>
+    <div class="star" style="top:38%;left:75%;animation-duration:3.5s;animation-delay:2s;"></div>
+    <div class="star" style="top:52%;left:12%;animation-duration:4.5s;animation-delay:1.5s;"></div>
+    <div class="star" style="top:68%;left:48%;animation-duration:3s;animation-delay:0.8s;"></div>
+    <div class="star" style="top:82%;left:68%;animation-duration:5s;animation-delay:2.5s;"></div>
+    <div class="star" style="top:18%;left:88%;animation-duration:3.2s;animation-delay:1.2s;"></div>
+    <div class="star" style="top:58%;left:38%;animation-duration:4.2s;animation-delay:0.3s;"></div>
+    <div class="star" style="top:88%;left:22%;animation-duration:2.8s;animation-delay:1.8s;"></div>
+    <div class="star" style="top:32%;left:4%;animation-duration:3.8s;animation-delay:2.2s;"></div>
+    <div class="star" style="top:72%;left:82%;animation-duration:4.8s;animation-delay:0.6s;"></div>
+    <div class="star" style="top:6%;left:42%;animation-duration:3.3s;"></div>
+    <div class="star" style="top:45%;left:62%;animation-duration:2.7s;animation-delay:1.4s;"></div>
+    <div class="star" style="top:90%;left:8%;animation-duration:5.2s;animation-delay:0.9s;"></div>
+    <div class="star" style="top:15%;left:72%;animation-duration:3.6s;animation-delay:0.4s;"></div>
+    <div class="star" style="top:75%;left:92%;animation-duration:4.1s;animation-delay:1.7s;"></div>
+    <div class="star" style="top:42%;left:95%;animation-duration:2.9s;animation-delay:2.3s;"></div>
+  </div>
+
+  <!-- Login Card -->
+  <div class="login-wrapper">
+    <div class="login-card" id="loginCard">
+
+      <!-- Logo -->
+      <div class="logo-area">
+        <div class="logo-icon">I</div>
+        <h1 class="logo-title">InvenTrack</h1>
+        <p class="logo-subtitle">Sistema de Gestión de Inventario</p>
+      </div>
+
+      <!-- Alerta del servidor -->
+      {errorMsg && (
+        <div class="alert alert-error">
+          <span class="alert-icon">🚫</span>
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      <!-- Form -->
+      <form method="POST" id="loginForm" novalidate>
+
+        <div class="form-group">
+          <label class="form-label">Correo electrónico</label>
+          <div class="input-wrapper">
+            <input
+              type="email"
+              name="email"
+              id="emailInput"
+              class="form-input"
+              placeholder="usuario@inventrack.com"
+              required
+              autocomplete="off"
+            />
+            <span class="input-icon">✉️</span>
+          </div>
+          <div class="input-status" id="emailStatus"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <div class="input-wrapper">
+            <input
+              type="password"
+              name="password"
+              id="passInput"
+              class="form-input"
+              placeholder="Ingresa tu contraseña"
+              required
+              autocomplete="current-password"
+            />
+            <span class="input-icon">🔒</span>
+            <button type="button" class="toggle-pass" id="togglePass" tabindex="-1">👁️</button>
+          </div>
+          <div class="input-status" id="passStatus"></div>
+        </div>
+
+        <button type="submit" class="btn-login" id="loginBtn">
+          <span class="btn-text">Iniciar Sesión</span>
+          <div class="btn-loader">
+            <div class="spinner"></div>
+          </div>
+        </button>
+
+        <!-- Links secundarios -->
+        <div class="auth-links">
+          <button type="button" class="auth-link" id="openForgot">¿Olvidaste tu contraseña?</button>
+          <button type="button" class="auth-link" id="openRegister">Crear cuenta</button>
+        </div>
+
+        <!-- Barra de intentos -->
+        <div class="lockout-bar" id="lockoutBar">
+          <div class="lockout-fill" id="lockoutFill" style="width: 0%"></div>
+        </div>
+        <div class="attempts-text" id="attemptsText"></div>
+
+      </form>
+
+      <!-- Demo -->
+      <div class="demo-section">
+        <p class="demo-label">Acceso rápido de prueba</p>
+        <div class="demo-buttons">
+          <button type="button" class="demo-btn" onclick="fillDemo('admin@inventrack.com','admin123')">
+            <span>👤</span> Admin
+          </button>
+          <button type="button" class="demo-btn" onclick="fillDemo('equipo3@inventrack.com','equipo123')">
+            <span>👥</span> Equipo 3
+          </button>
+          <button type="button" class="demo-btn" onclick="fillDemo('demo@inventrack.com','demo123')">
+            <span>🧪</span> Demo
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Modal: Recuperar contraseña ─────────────── -->
+  <div class="modal-overlay" id="modalForgot">
+    <div class="modal-box">
+      <button class="modal-close" id="closeForgot">×</button>
+      <h2 class="modal-title">Recuperar acceso</h2>
+      <p class="modal-subtitle">Ingresa tu correo y te enviaremos instrucciones para restablecer tu contraseña.</p>
+      <div class="modal-field">
+        <label class="modal-label">Correo electrónico</label>
+        <input type="email" id="forgotEmail" class="modal-input" placeholder="tu@correo.com" autocomplete="off" />
+      </div>
+      <button class="modal-btn" id="forgotBtn">Enviar instrucciones</button>
+      <div class="modal-msg" id="forgotMsg"></div>
+      <div class="modal-divider"></div>
+      <div class="modal-footer-link">¿Recordaste tu contraseña? <button id="forgotToLogin">Iniciar sesión</button></div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Registrarse ───────────────────────── -->
+  <div class="modal-overlay" id="modalRegister">
+    <div class="modal-box">
+      <button class="modal-close" id="closeRegister">×</button>
+      <h2 class="modal-title">Crear cuenta</h2>
+      <p class="modal-subtitle">Completa el formulario. Un administrador aprobará tu acceso.</p>
+      <div class="modal-field">
+        <label class="modal-label">Nombre completo</label>
+        <input type="text" id="regName" class="modal-input" placeholder="Tu nombre" autocomplete="off" />
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Correo electrónico</label>
+        <input type="email" id="regEmail" class="modal-input" placeholder="tu@correo.com" autocomplete="off" />
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Contraseña</label>
+        <input type="password" id="regPass" class="modal-input" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+        <div class="pass-strength" id="passStrengthBar"></div>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Confirmar contraseña</label>
+        <input type="password" id="regPassConfirm" class="modal-input" placeholder="Repite tu contraseña" autocomplete="new-password" />
+      </div>
+      <button class="modal-btn" id="registerBtn">Solicitar cuenta</button>
+      <div class="modal-msg" id="registerMsg"></div>
+      <div class="modal-divider"></div>
+      <div class="modal-footer-link">¿Ya tienes cuenta? <button id="registerToLogin">Iniciar sesión</button></div>
+    </div>
+  </div>
+
+  <script is:inline>
+    var maxAttempts = 5;
+    var attempts = parseInt(sessionStorage.getItem('login-attempts') || '0');
+    var lockedUntil = parseInt(sessionStorage.getItem('login-locked') || '0');
+
+    // ── Modal helpers ──
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    document.getElementById('openForgot').addEventListener('click', function() { openModal('modalForgot'); });
+    document.getElementById('openRegister').addEventListener('click', function() { openModal('modalRegister'); });
+    document.getElementById('closeForgot').addEventListener('click', function() { closeModal('modalForgot'); });
+    document.getElementById('closeRegister').addEventListener('click', function() { closeModal('modalRegister'); });
+    document.getElementById('forgotToLogin').addEventListener('click', function() { closeModal('modalForgot'); });
+    document.getElementById('registerToLogin').addEventListener('click', function() { closeModal('modalRegister'); });
+
+    // Close on overlay click
+    ['modalForgot','modalRegister'].forEach(function(id) {
+      document.getElementById(id).addEventListener('click', function(e) {
+        if (e.target === this) closeModal(id);
+      });
+    });
+
+    // ── Forgot password submit ──
+    var EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+    document.getElementById('forgotBtn').addEventListener('click', async function() {
+      var btn = this;
+      var emailEl = document.getElementById('forgotEmail');
+      var msgEl = document.getElementById('forgotMsg');
+      var email = emailEl.value.trim();
+      emailEl.classList.remove('error');
+      msgEl.className = 'modal-msg';
+      if (!EMAIL_RE.test(email)) {
+        emailEl.classList.add('error');
+        msgEl.textContent = 'Ingresa un correo electrónico válido.';
+        msgEl.className = 'modal-msg show error';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      try {
+        var res = await fetch('/api/forgot-password', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ email: email })
+        });
+        var data = await res.json();
+        msgEl.textContent = data.ok
+          ? '✅ Si ese correo existe en el sistema, recibirás instrucciones en breve.'
+          : '❌ ' + (data.message || 'Error al procesar la solicitud.');
+        msgEl.className = 'modal-msg show ' + (data.ok ? 'success' : 'error');
+        if (data.ok) emailEl.value = '';
+      } catch(e) {
+        msgEl.textContent = '❌ Error de conexión. Intenta de nuevo.';
+        msgEl.className = 'modal-msg show error';
+      }
+      btn.disabled = false;
+      btn.textContent = 'Enviar instrucciones';
+    });
+
+    // ── Register: password strength ──
+    document.getElementById('regPass').addEventListener('input', function() {
+      var v = this.value;
+      var score = 0;
+      if (v.length >= 8) score++;
+      if (/[A-Z]/.test(v)) score++;
+      if (/[0-9]/.test(v)) score++;
+      if (/[^a-zA-Z0-9]/.test(v)) score++;
+      var bar = document.getElementById('passStrengthBar');
+      var colors = ['#ef4444','#f59e0b','#3b82f6','#10b981'];
+      bar.style.width = (score * 25) + '%';
+      bar.style.background = colors[score - 1] || 'transparent';
+    });
+
+    // ── Register submit ──
+   // ── Register submit (AHORA CONECTADO AL BACKEND) ──
+document.getElementById('registerBtn').addEventListener('click', async function() {
+  var btn = this;
+  var name = document.getElementById('regName').value.trim();
+  var email = document.getElementById('regEmail').value.trim();
+  var pass = document.getElementById('regPass').value;
+  var passC = document.getElementById('regPassConfirm').value;
+  var msgEl = document.getElementById('registerMsg');
+
+  ['regName','regEmail','regPass','regPassConfirm'].forEach(function(id) {
+    document.getElementById(id).classList.remove('error');
+  });
+  msgEl.className = 'modal-msg';
+
+  // Validaciones del cliente
+  var err = '';
+  if (!name) { 
+    document.getElementById('regName').classList.add('error'); 
+    err = 'El nombre es obligatorio.'; 
+  }
+  else if (!EMAIL_RE.test(email)) { 
+    document.getElementById('regEmail').classList.add('error'); 
+    err = 'Ingresa un correo válido.'; 
+  }
+  else if (pass.length < 8) { 
+    document.getElementById('regPass').classList.add('error'); 
+    err = 'La contraseña debe tener al menos 8 caracteres.'; 
+  }
+  else if (pass !== passC) { 
+    document.getElementById('regPassConfirm').classList.add('error'); 
+    err = 'Las contraseñas no coinciden.'; 
+  }
+
+  if (err) { 
+    msgEl.textContent = '❌ ' + err; 
+    msgEl.className = 'modal-msg show error'; 
+    return; 
+  }
+
+  btn.disabled = true; 
+  btn.textContent = 'Creando cuenta...';
+
+  try {
+    var res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, email: email, password: pass })
+    });
+
+    var data = await res.json();
+
+    if (res.ok && data.success) {
+      msgEl.innerHTML = '✅ <strong>¡Cuenta creada!</strong> Revisa tu correo electrónico para confirmar tu cuenta. El enlace expira en 24 horas.';
+      msgEl.className = 'modal-msg show success';
+      ['regName','regEmail','regPass','regPassConfirm'].forEach(function(id) { 
+        document.getElementById(id).value = ''; 
+      });
+      document.getElementById('passStrengthBar').style.width = '0';
+      showToast('📧 ¡Revisa tu correo para confirmar la cuenta!', 'success');
+    } else {
+      msgEl.textContent = '❌ ' + (data.error || 'Error al crear la cuenta.');
+      msgEl.className = 'modal-msg show error';
+    }
+  } catch(e) {
+    msgEl.textContent = '❌ Error de conexión. Intenta de nuevo.';
+    msgEl.className = 'modal-msg show error';
+  }
+
+  btn.disabled = false; 
+  btn.textContent = 'Solicitar cuenta';
+});
+
+    var emailInput = document.getElementById('emailInput');
+    var passInput = document.getElementById('passInput');
+    var loginForm = document.getElementById('loginForm');
+    var loginBtn = document.getElementById('loginBtn');
+    var togglePass = document.getElementById('togglePass');
+    var emailStatus = document.getElementById('emailStatus');
+    var passStatus = document.getElementById('passStatus');
+    var lockoutBar = document.getElementById('lockoutBar');
+    var lockoutFill = document.getElementById('lockoutFill');
+    var attemptsText = document.getElementById('attemptsText');
+
+    updateAttemptsUI();
+
+    // ── Toggle password visibility ──
+    togglePass.addEventListener('click', function() {
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        togglePass.textContent = '🙈';
+      } else {
+        passInput.type = 'password';
+        togglePass.textContent = '👁️';
+      }
+    });
+
+    // ── Validación en tiempo real — Email ──
+    emailInput.addEventListener('input', function() {
+      var val = emailInput.value.trim();
+      emailInput.classList.remove('input-error');
+      if (val.length === 0) {
+        emailStatus.className = 'input-status';
+        return;
+      }
+      if (val.includes('@') && val.includes('.') && val.length > 5) {
+        emailStatus.textContent = '✓ Formato válido';
+        emailStatus.className = 'input-status show valid';
+      } else {
+        emailStatus.textContent = '✗ Ingresa un email válido';
+        emailStatus.className = 'input-status show invalid';
+      }
+    });
+
+    // ── Validación en tiempo real — Password ──
+    passInput.addEventListener('input', function() {
+      var val = passInput.value;
+      passInput.classList.remove('input-error');
+      if (val.length === 0) {
+        passStatus.className = 'input-status';
+        return;
+      }
+      if (val.length >= 6) {
+        passStatus.textContent = '✓ Longitud correcta';
+        passStatus.className = 'input-status show valid';
+      } else {
+        passStatus.textContent = '✗ Mínimo 6 caracteres';
+        passStatus.className = 'input-status show invalid';
+      }
+    });
+
+    // ── Submit handler ──
+    loginForm.addEventListener('submit', function(e) {
+      // Check lockout
+      var now = Date.now();
+      if (lockedUntil > now) {
+        e.preventDefault();
+        var secs = Math.ceil((lockedUntil - now) / 1000);
+        showToast('⏳ Cuenta bloqueada. Espera ' + secs + ' segundos', 'warning');
+        return;
+      }
+
+      var email = emailInput.value.trim();
+      var pass = passInput.value;
+      var hasError = false;
+
+      if (!email) {
+        emailInput.classList.add('input-error');
+        emailStatus.textContent = '✗ El correo es obligatorio';
+        emailStatus.className = 'input-status show invalid';
+        hasError = true;
+      }
+
+      if (!pass) {
+        passInput.classList.add('input-error');
+        passStatus.textContent = '✗ La contraseña es obligatoria';
+        passStatus.className = 'input-status show invalid';
+        hasError = true;
+      }
+
+      if (hasError) {
+        e.preventDefault();
+        showToast('⚠️ Completa todos los campos', 'warning');
+        return;
+      }
+
+      // Show loading
+      loginBtn.classList.add('loading');
+      loginBtn.disabled = true;
+    });
+
+    function startLockout() {
+      if (Date.now() > lockedUntil) {
+        lockedUntil = Date.now() + 30000;
+        sessionStorage.setItem('login-locked', String(lockedUntil));
+        showToast('🔒 Demasiados intentos. Bloqueado 30 segundos', 'error');
+      }
+      
+      loginBtn.disabled = true;
+      
+      var countdownInterval = setInterval(function() {
+        var remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(countdownInterval);
+          attempts = 0;
+          sessionStorage.setItem('login-attempts', '0');
+          sessionStorage.removeItem('login-locked');
+          lockedUntil = 0;
+          updateAttemptsUI();
+          loginBtn.disabled = false;
+          showToast('🔓 Puedes intentar de nuevo', 'success');
+        } else {
+          loginBtn.disabled = true;
+          attemptsText.textContent = '🔒 Bloqueado — ' + remaining + 's restantes';
+        }
+      }, 1000);
+    }
+
+    if (lockedUntil > Date.now()) {
+      startLockout();
+    }
+
+    function updateAttemptsUI() {
+      if (attempts > 0 && attempts < maxAttempts) {
+        lockoutBar.className = 'lockout-bar show';
+        lockoutFill.style.width = (attempts / maxAttempts * 100) + '%';
+        attemptsText.className = 'attempts-text show';
+        attemptsText.textContent = '⚠️ Intento ' + attempts + ' de ' + maxAttempts;
+      } else if (attempts >= maxAttempts) {
+        lockoutBar.className = 'lockout-bar show';
+        lockoutFill.style.width = '100%';
+        attemptsText.className = 'attempts-text show';
+      } else {
+        lockoutBar.className = 'lockout-bar';
+        attemptsText.className = 'attempts-text';
+      }
+    }
+
+    // ── Toast system ──
+    function showToast(message, type) {
+      var container = document.getElementById('toastContainer');
+      var toast = document.createElement('div');
+      toast.className = 'toast toast-' + type;
+      toast.style.position = 'relative';
+      toast.innerHTML = '<span>' + message + '</span><div class="toast-progress"></div>';
+      container.appendChild(toast);
+
+      setTimeout(function() {
+        toast.style.animation = 'toastOut 0.3s ease-in forwards';
+        setTimeout(function() { toast.remove(); }, 300);
+      }, 3000);
+    }
+
+    // ── Fill demo credentials ──
+    function fillDemo(email, pass) {
+      emailInput.value = email;
+      passInput.value = pass;
+      emailInput.dispatchEvent(new Event('input'));
+      passInput.dispatchEvent(new Event('input'));
+
+      // Visual feedback
+      emailInput.style.borderColor = 'rgba(52, 211, 153, 0.5)';
+      passInput.style.borderColor = 'rgba(52, 211, 153, 0.5)';
+      setTimeout(function() {
+        emailInput.style.borderColor = '';
+        passInput.style.borderColor = '';
+      }, 1000);
+
+      showToast('✅ Credenciales cargadas — dale Iniciar Sesión', 'success');
+    }
+
+    // ── Alerta del servidor: auto-dismiss + dismiss al escribir ──
+    var serverError = document.querySelector('.alert-error');
+    if (serverError) {
+      // Track attempts only on actual server failure
+      attempts++;
+      sessionStorage.setItem('login-attempts', String(attempts));
+      updateAttemptsUI();
+      
+      if (attempts >= maxAttempts) {
+        startLockout();
+      }
+
+      // Shake inputs
+      emailInput.classList.add('input-error');
+      passInput.classList.add('input-error');
+      setTimeout(function() {
+        emailInput.classList.remove('input-error');
+        passInput.classList.remove('input-error');
+      }, 600);
+
+      // Limpiar la URL para que al recargar no vuelva a mostrar el error
+      history.replaceState(null, '', '/login');
+
+      // Auto-dismiss after 4s
+      function dismissAlert() {
+        if (!serverError.parentNode) return;
+        serverError.style.transition = 'opacity 0.4s ease, transform 0.4s ease, max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease';
+        serverError.style.opacity = '0';
+        serverError.style.transform = 'translateY(-8px)';
+        serverError.style.maxHeight = '0';
+        serverError.style.marginBottom = '0';
+        serverError.style.padding = '0';
+        serverError.style.overflow = 'hidden';
+        setTimeout(function() { if (serverError.parentNode) serverError.remove(); }, 420);
+      }
+      var autoDismissTimer = setTimeout(dismissAlert, 4000);
+
+      // También desaparece al escribir
+      function onType() { clearTimeout(autoDismissTimer); dismissAlert(); }
+      emailInput.addEventListener('input', onType, { once: true });
+      passInput.addEventListener('input', onType, { once: true });
+    }
+
+    // Reset on success (clear attempts after successful login)
+    if (window.location.pathname === '/') {
+      sessionStorage.removeItem('login-attempts');
+      sessionStorage.removeItem('login-locked');
+    }
+  </script>
+
+</body>
+</html>
