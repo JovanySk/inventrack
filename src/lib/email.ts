@@ -1,13 +1,9 @@
 // ═══════════════════════════════════════════════════════
 // ⚡ InvenTrack — Sistema de Email Profesional
-// 📧 SMTP Hostinger — inventracx.cloud
+// 📧 Resend API — inventracx.cloud
 // ═══════════════════════════════════════════════════════
 
-import dns from 'dns';
-dns.setDefaultResultOrder('ipv4first');  // ← FORZAR IPv4 GLOBAL
-
-
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 interface LowStockProduct {
   id: number;
@@ -18,39 +14,22 @@ interface LowStockProduct {
   unit: string;
 }
 
-// ─── Configuración SMTP ───
-function createTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT) || 587; // Cambiado a 587 por defecto
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!host || !user || !pass) {
-    console.warn('[Email] ⚠️ SMTP no configurado — emails simulados');
+// ─── Cliente Resend ───
+function getResendClient(): Resend | null {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn('[Email] ⚠️ RESEND_API_KEY no configurada — emails simulados');
     return null;
   }
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465, // Solo true para 465
-    auth: { user, pass },
-    tls: {
-      // Hostinger a veces necesita esto en entornos cloud
-      rejectUnauthorized: false,
-      minVersion: 'TLSv1.2'
-    },
-    connectionTimeout: 5000, // 5 segundos máximo para conectar
-    greetingTimeout: 5000,
-    socketTimeout: 10000,
-  });
+  return new Resend(apiKey);
 }
 
 // ─── Envío genérico ───
 async function sendEmail(to: string, subject: string, html: string, text: string): Promise<boolean> {
-  const transporter = createTransporter();
+  const resend = getResendClient();
+  const from = `${process.env.SENDER_NAME || 'InvenTrack'} <${process.env.SENDER_EMAIL || 'noreply@inventracx.cloud'}>`;
 
-  if (!transporter) {
+  if (!resend) {
     console.log('[Email] ─────────────────────────────────');
     console.log('[Email] 📧 (SIMULADO) Para:', to);
     console.log('[Email] 📧 Asunto:', subject);
@@ -59,18 +38,20 @@ async function sendEmail(to: string, subject: string, html: string, text: string
   }
 
   try {
-    const info = await transporter.sendMail({
-      from: `"${process.env.SENDER_NAME || 'InvenTrack'}" <${process.env.SENDER_EMAIL || process.env.SMTP_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from,
       to,
       subject,
-      text,
       html,
-      headers: {
-        'X-Priority': '3',
-        'X-Mailer': 'InvenTrack Mailer',
-      }
+      text,
     });
-    console.log(`[Email] ✅ Enviado a ${to} — ID: ${info.messageId}`);
+
+    if (error) {
+      console.error('[Email] ❌ Error:', error.message);
+      return false;
+    }
+
+    console.log(`[Email] ✅ Enviado a ${to} — ID: ${data?.id}`);
     return true;
   } catch (err: any) {
     console.error('[Email] ❌ Error:', err.message);
@@ -129,7 +110,7 @@ function getConfirmationHTML(name: string, confirmUrl: string): string {
               </td>
             </tr>
 
-            <!-- Ícono de sobre animado -->
+            <!-- Ícono de sobre -->
             <tr>
               <td align="center" style="padding:32px 40px 0;">
                 <div style="width:72px;height:72px;background:linear-gradient(135deg,rgba(139,92,246,0.15),rgba(217,70,239,0.15));border:2px solid rgba(139,92,246,0.2);border-radius:20px;line-height:72px;font-size:34px;text-align:center;">✉️</div>
