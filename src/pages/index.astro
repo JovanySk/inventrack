@@ -148,10 +148,10 @@ import Layout from '../layouts/Layout.astro';
           </div>`;
         }
 
-        // Three-column grid for charts
+        // ===== FILA 1: Gráfica de barras (izq) + Stock Bajo (der) =====
         h += '<div class="two-col" style="grid-template-columns: 2fr 1fr; margin-bottom: 20px;">';
 
-        // Main Bar Chart
+        // Bar Chart - Productos por Categoría
         h += `<div class="panel">
           <div class="panel-head">
             <span class="panel-title">Productos por Categoría</span>
@@ -159,21 +159,6 @@ import Layout from '../layouts/Layout.astro';
           </div>
           <div class="panel-body"><canvas id="chartCat" height="140"></canvas></div>
         </div>`;
-
-        // Doughnut Chart
-        h += `<div class="panel">
-          <div class="panel-head">
-            <span class="panel-title">Distribución de Valor</span>
-            <span style="font-size:11px;color:rgba(180,150,255,0.4)">Valor total</span>
-          </div>
-          <div class="panel-body" style="display:flex; justify-content:center; align-items:center;">
-            <div style="width:100%; max-width:180px;"><canvas id="chartVal" height="180"></canvas></div>
-          </div>
-        </div>`;
-        h += '</div>';
-
-        // Second row: Stock alerts & Movement trends
-        h += '<div class="two-col">';
 
         // Low stock panel
         h += `<div class="panel">
@@ -201,6 +186,21 @@ import Layout from '../layouts/Layout.astro';
           </button>`;
         }
         h += '</div></div>';
+        h += '</div>'; // cierra fila 1
+
+        // ===== FILA 2: Doughnut (izq) + Tendencia Movimientos (der) =====
+        h += '<div class="two-col">';
+
+        // Doughnut Chart
+        h += `<div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">Distribución de Valor</span>
+            <span style="font-size:11px;color:rgba(180,150,255,0.4)">Valor total</span>
+          </div>
+          <div class="panel-body" style="display:flex; justify-content:center; align-items:center;">
+            <div style="width:100%; max-width:180px;"><canvas id="chartVal" height="180"></canvas></div>
+          </div>
+        </div>`;
 
         // Movement Trend Chart
         h += `<div class="panel">
@@ -211,9 +211,9 @@ import Layout from '../layouts/Layout.astro';
           <div class="panel-body"><canvas id="chartMove" height="140"></canvas></div>
         </div>`;
 
-        h += '</div>'; // second row
+        h += '</div>'; // cierra fila 2
 
-        // Recent movements table
+        // ===== TABLA: Historial Reciente =====
         h += `<div class="panel" style="margin-top: 20px;">
           <div class="panel-head">
             <span class="panel-title">Historial Reciente</span>
@@ -306,7 +306,7 @@ import Layout from '../layouts/Layout.astro';
             },
           });
 
-          // 3. Line Chart: Movement Trends (Aggregated by day)
+          // 3. Line Chart: Movement Trends
           const ctxMove = document.getElementById('chartMove') as HTMLCanvasElement;
           const moveData = [...recentMovements].reverse();
           // @ts-ignore
@@ -338,7 +338,6 @@ import Layout from '../layouts/Layout.astro';
           });
         };
         document.head.appendChild(script);
-
 
       } catch (err: any) {
         document.getElementById('dash')!.innerHTML =
