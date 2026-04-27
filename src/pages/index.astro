@@ -247,118 +247,106 @@ import Layout from '../layouts/Layout.astro';
         root.innerHTML = h;
 
         // Chart Initialization
-        if ((window as any).Chart) {
-          initCharts(byCategory, recentMovements);
-        } else {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js';
-          script.onload = () => initCharts(byCategory, recentMovements);
-          document.head.appendChild(script);
-        }
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js';
+        script.onload = function() {
+          const colors = [
+            { bg:'rgba(236,72,153,0.45)',  border:'#ec4899' },
+            { bg:'rgba(6,182,212,0.45)',   border:'#06b6d4' },
+            { bg:'rgba(16,185,129,0.45)',  border:'#10b981' },
+            { bg:'rgba(245,158,11,0.45)',  border:'#f59e0b' },
+            { bg:'rgba(139,92,246,0.45)',  border:'#8b5cf6' },
+            { bg:'rgba(244,63,94,0.45)',   border:'#f43f5e' },
+          ];
+
+          // 1. Bar Chart: Products by Category
+          const ctxCat = document.getElementById('chartCat') as HTMLCanvasElement;
+          // @ts-ignore
+          new Chart(ctxCat.getContext('2d'), {
+            type: 'bar',
+            data: {
+              labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
+              datasets: [{
+                label: 'Productos',
+                data: byCategory.map((c: any) => c.count),
+                backgroundColor: colors.map(c => c.bg),
+                borderColor: colors.map(c => c.border),
+                borderWidth: 2, borderRadius: 8, borderSkipped: false,
+              }],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+              scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1, color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
+                x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
+              },
+            },
+          });
+
+          // 2. Doughnut Chart: Value by Category
+          const ctxVal = document.getElementById('chartVal') as HTMLCanvasElement;
+          // @ts-ignore
+          new Chart(ctxVal.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+              labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
+              datasets: [{
+                data: byCategory.map((c: any) => c.value),
+                backgroundColor: colors.map(c => c.bg),
+                borderColor: colors.map(c => c.border),
+                borderWidth: 2,
+                hoverOffset: 10
+              }],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+              cutout: '70%',
+            },
+          });
+
+          // 3. Line Chart: Movement Trends (Aggregated by day)
+          const ctxMove = document.getElementById('chartMove') as HTMLCanvasElement;
+          const moveData = [...recentMovements].reverse();
+          // @ts-ignore
+          new Chart(ctxMove.getContext('2d'), {
+            type: 'line',
+            data: {
+              labels: moveData.map((m: any) => new Date(m.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })),
+              datasets: [{
+                label: 'Stock Final',
+                data: moveData.map((m: any) => m.newStock),
+                borderColor: '#a855f7',
+                backgroundColor: 'rgba(168,85,247,0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: '#a855f7',
+                pointBorderColor: '#fff',
+              }],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+              scales: {
+                y: { ticks: { color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
+                x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
+              },
+            },
+          });
+        };
+        document.head.appendChild(script);
+
 
       } catch (err: any) {
-        console.error('Dashboard Error:', err);
         document.getElementById('dash')!.innerHTML =
           `<div style="text-align:center;padding:60px;color:rgba(180,150,255,0.4)">
             <p style="font-size:32px;margin-bottom:10px">💥</p>
             <p style="font-weight:700;color:#f87171">Error cargando dashboard</p>
             <p style="font-size:12px;margin-top:6px">${err.message}</p>
           </div>`;
-      }
-    }
-
-    function initCharts(byCategory: any, recentMovements: any) {
-      const colors = [
-        { bg:'rgba(236,72,153,0.45)',  border:'#ec4899' },
-        { bg:'rgba(6,182,212,0.45)',   border:'#06b6d4' },
-        { bg:'rgba(16,185,129,0.45)',  border:'#10b981' },
-        { bg:'rgba(245,158,11,0.45)',  border:'#f59e0b' },
-        { bg:'rgba(139,92,246,0.45)',  border:'#8b5cf6' },
-        { bg:'rgba(244,63,94,0.45)',   border:'#f43f5e' },
-      ];
-
-      // 1. Bar Chart: Products by Category
-      const ctxCat = document.getElementById('chartCat') as HTMLCanvasElement;
-      if (ctxCat) {
-        // @ts-ignore
-        new Chart(ctxCat, {
-          type: 'bar',
-          data: {
-            labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
-            datasets: [{
-              label: 'Productos',
-              data: byCategory.map((c: any) => c.count),
-              backgroundColor: colors.map(c => c.bg),
-              borderColor: colors.map(c => c.border),
-              borderWidth: 2, borderRadius: 8, borderSkipped: false,
-            }],
-          },
-          options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-              y: { beginAtZero: true, ticks: { stepSize: 1, color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
-              x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
-            },
-          },
-        });
-      }
-
-      // 2. Doughnut Chart: Value by Category
-      const ctxVal = document.getElementById('chartVal') as HTMLCanvasElement;
-      if (ctxVal) {
-        // @ts-ignore
-        new Chart(ctxVal, {
-          type: 'doughnut',
-          data: {
-            labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
-            datasets: [{
-              data: byCategory.map((c: any) => c.value),
-              backgroundColor: colors.map(c => c.bg),
-              borderColor: colors.map(c => c.border),
-              borderWidth: 2,
-              hoverOffset: 10
-            }],
-          },
-          options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            cutout: '70%',
-          },
-        });
-      }
-
-      // 3. Line Chart: Movement Trends
-      const ctxMove = document.getElementById('chartMove') as HTMLCanvasElement;
-      if (ctxMove) {
-        const moveData = [...recentMovements].reverse();
-        // @ts-ignore
-        new Chart(ctxMove, {
-          type: 'line',
-          data: {
-            labels: moveData.map((m: any) => new Date(m.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })),
-            datasets: [{
-              label: 'Stock Final',
-              data: moveData.map((m: any) => m.newStock),
-              borderColor: '#a855f7',
-              backgroundColor: 'rgba(168,85,247,0.1)',
-              borderWidth: 3,
-              fill: true,
-              tension: 0.4,
-              pointRadius: 4,
-              pointBackgroundColor: '#a855f7',
-              pointBorderColor: '#fff',
-            }],
-          },
-          options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-              y: { ticks: { color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
-              x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
-            },
-          },
-        });
       }
     }
 
