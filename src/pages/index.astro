@@ -4,7 +4,6 @@ import Layout from '../layouts/Layout.astro';
 
 <Layout title="Dashboard">
 <style is:global>
-  /* KPI Grid */
   .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
   @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
 
@@ -25,7 +24,6 @@ import Layout from '../layouts/Layout.astro';
   .kpi-amber { background: rgba(245,158,11,0.07);  border-color: rgba(245,158,11,0.15);  color: #fbbf24; }
   .kpi-red   { background: rgba(239,68,68,0.07);   border-color: rgba(239,68,68,0.15);   color: #f87171; }
 
-  /* Exchange rate bar */
   .exch-bar {
     display: flex; align-items: center; gap: 10px;
     padding: 11px 18px; border-radius: 12px; margin-bottom: 22px;
@@ -35,7 +33,6 @@ import Layout from '../layouts/Layout.astro';
   .exch-bar strong { color: #22d3ee; font-family: monospace; font-size: 13px; }
   .exch-src { margin-left: auto; font-size: 10px; }
 
-  /* Two-column section */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
   @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
 
@@ -50,7 +47,6 @@ import Layout from '../layouts/Layout.astro';
   .panel-title { font-size: 14px; font-weight: 700; color: #e2d9f3; }
   .panel-body { padding: 16px 18px; }
 
-  /* Low stock list */
   .stock-item {
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 12px; border-radius: 10px; margin-bottom: 6px;
@@ -73,7 +69,6 @@ import Layout from '../layouts/Layout.astro';
   .see-all { font-size: 11px; font-weight: 600; color: rgba(168,85,247,0.7); text-decoration: none; transition: color 0.2s; }
   .see-all:hover { color: #ec4899; }
 
-  /* Mini table inside panel */
   .mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .mini-table thead th {
     text-align: left; padding: 7px 10px;
@@ -109,6 +104,9 @@ import Layout from '../layouts/Layout.astro';
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .chart-canvas-wrap { position: relative; width: 100%; min-height: 220px; }
+  .chart-canvas-wrap canvas { width: 100% !important; }
 </style>
 
   <div id="dash">
@@ -118,19 +116,28 @@ import Layout from '../layouts/Layout.astro';
     </div>
   </div>
 
-  <script>
-    async function loadDashboard() {
-      const root = document.getElementById('dash')!;
-      try {
-        const res  = await fetch('/api/dashboard');
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        const { totals, byCategory, lowStock, recentMovements } = data;
+  <!-- Cargar Chart.js PRIMERO -->
+  <script is:inline src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 
-        function fmx(n: number) { return '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
+  <script is:inline>
+    var _dashData = null;
+
+    async function loadDashboard() {
+      var root = document.getElementById('dash');
+      try {
+        var res  = await fetch('/api/dashboard');
+        var data = await res.json();
+        if (data.error) throw new Error(data.error);
+        _dashData = data;
+        var totals = data.totals;
+        var byCategory = data.byCategory;
+        var lowStock = data.lowStock;
+        var recentMovements = data.recentMovements;
+
+        function fmx(n) { return '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
 
         // KPIs
-        let h = '<div class="kpi-grid">';
+        var h = '<div class="kpi-grid">';
         h += kpi('📦','Total Productos', totals.totalProducts, 'pink', '');
         h += kpi('💰','Valor Inventario', fmx(totals.totalValue), 'cyan',
           totals.exchangeRate ? '≈ $' + Number(totals.totalValueUsd).toLocaleString('en-US') + ' USD' : '');
@@ -140,235 +147,309 @@ import Layout from '../layouts/Layout.astro';
 
         // Exchange rate
         if (totals.exchangeRate) {
-          h += `<div class="exch-bar">
-            <span>🌐</span>
-            <span>Tipo de cambio en tiempo real</span>
-            <strong>$1 USD = $${totals.exchangeRate.toFixed(2)} MXN</strong>
-            <span class="exch-src">via open.er-api.com</span>
-          </div>`;
+          h += '<div class="exch-bar">';
+          h += '<span>🌐</span>';
+          h += '<span>Tipo de cambio en tiempo real</span>';
+          h += '<strong>$1 USD = $' + totals.exchangeRate.toFixed(2) + ' MXN</strong>';
+          h += '<span class="exch-src">via open.er-api.com</span>';
+          h += '</div>';
         }
 
-        // ===== FILA 1: Gráfica de barras (izq) + Stock Bajo (der) =====
-        h += '<div class="two-col" style="grid-template-columns: 2fr 1fr; margin-bottom: 20px;">';
-
-        // Bar Chart - Productos por Categoría
-        h += `<div class="panel">
-          <div class="panel-head">
-            <span class="panel-title">Productos por Categoría</span>
-            <span style="font-size:11px;color:rgba(180,150,255,0.4)">${byCategory.length} categorías</span>
-          </div>
-          <div class="panel-body"><canvas id="chartCat" height="140"></canvas></div>
-        </div>`;
-
-        // Low stock panel
-        h += `<div class="panel">
-          <div class="panel-head">
-            <span class="panel-title">Stock Bajo</span>
-            <span class="badge-alert">${lowStock.length} alerta${lowStock.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div class="panel-body">`;
-        if (lowStock.length === 0) {
-          h += `<div class="no-issues">✅ Todo en orden</div>`;
-        } else {
-          for (const p of lowStock) {
-            const c = p.stock === 0 ? '#f87171' : '#fbbf24';
-            h += `<div class="stock-item">
-              <div><div class="stock-name">${p.name}</div><div class="stock-sku">${p.sku ?? 'Sin SKU'}</div></div>
-              <div class="stock-qty">
-                <div class="stock-num" style="color:${c}">${p.stock} ${p.unit}</div>
-                <div class="stock-min">mín: ${p.minStock}</div>
-              </div>
-            </div>`;
-          }
-          h += `<button class="btn-alert" onclick="checkAlerts()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            Enviar alerta por email
-          </button>`;
-        }
-        h += '</div></div>';
-        h += '</div>'; // cierra fila 1
-
-        // ===== FILA 2: Doughnut (izq) + Tendencia Movimientos (der) =====
+        // === ROW 1: Bar Chart + Low Stock ===
         h += '<div class="two-col">';
 
-        // Doughnut Chart
-        h += `<div class="panel">
-          <div class="panel-head">
-            <span class="panel-title">Distribución de Valor</span>
-            <span style="font-size:11px;color:rgba(180,150,255,0.4)">Valor total</span>
-          </div>
-          <div class="panel-body" style="display:flex; justify-content:center; align-items:center;">
-            <div style="width:100%; max-width:180px;"><canvas id="chartVal" height="180"></canvas></div>
-          </div>
-        </div>`;
+        // Bar chart panel
+        h += '<div class="panel">';
+        h += '<div class="panel-head">';
+        h += '<span class="panel-title">Productos por Categoría</span>';
+        h += '<span style="font-size:11px;color:rgba(180,150,255,0.4)">' + byCategory.length + ' categorías</span>';
+        h += '</div>';
+        h += '<div class="panel-body"><div class="chart-canvas-wrap"><canvas id="chartCat"></canvas></div></div>';
+        h += '</div>';
 
-        // Movement Trend Chart
-        h += `<div class="panel">
-          <div class="panel-head">
-            <span class="panel-title">Tendencia de Movimientos</span>
-            <span style="font-size:11px;color:rgba(180,150,255,0.4)">Últimos registros</span>
-          </div>
-          <div class="panel-body"><canvas id="chartMove" height="140"></canvas></div>
-        </div>`;
+        // Low stock panel
+        h += '<div class="panel">';
+        h += '<div class="panel-head">';
+        h += '<span class="panel-title">Stock Bajo</span>';
+        h += '<span class="badge-alert">' + lowStock.length + ' alerta' + (lowStock.length !== 1 ? 's' : '') + '</span>';
+        h += '</div>';
+        h += '<div class="panel-body">';
+        if (lowStock.length === 0) {
+          h += '<div class="no-issues">✅ Todo en orden</div>';
+        } else {
+          for (var i = 0; i < lowStock.length; i++) {
+            var p = lowStock[i];
+            var c = p.stock === 0 ? '#f87171' : '#fbbf24';
+            h += '<div class="stock-item">';
+            h += '<div><div class="stock-name">' + p.name + '</div><div class="stock-sku">' + (p.sku || 'Sin SKU') + '</div></div>';
+            h += '<div class="stock-qty">';
+            h += '<div class="stock-num" style="color:' + c + '">' + p.stock + ' ' + p.unit + '</div>';
+            h += '<div class="stock-min">mín: ' + p.minStock + '</div>';
+            h += '</div></div>';
+          }
+          h += '<button class="btn-alert" onclick="checkAlerts()">';
+          h += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>';
+          h += 'Enviar alerta por email</button>';
+        }
+        h += '</div></div>';
+        h += '</div>'; // close two-col
 
-        h += '</div>'; // cierra fila 2
+        // === ROW 2: Donut Chart + Line Chart ===
+        h += '<div class="two-col">';
 
-        // ===== TABLA: Historial Reciente =====
-        h += `<div class="panel" style="margin-top: 20px;">
-          <div class="panel-head">
-            <span class="panel-title">Historial Reciente</span>
-            <a href="/movimientos" class="see-all">Ver todos →</a>
-          </div>
-          <div style="overflow-x:auto">
-          <table class="mini-table">
-            <thead><tr>
-              <th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Stock</th><th>Razón</th><th>Fecha</th>
-            </tr></thead>
-            <tbody>`;
+        // Donut chart
+        h += '<div class="panel">';
+        h += '<div class="panel-head">';
+        h += '<span class="panel-title">Distribución de Valor</span>';
+        h += '<span style="font-size:11px;color:rgba(180,150,255,0.4)">Valor total</span>';
+        h += '</div>';
+        h += '<div class="panel-body"><div class="chart-canvas-wrap"><canvas id="chartDonut"></canvas></div></div>';
+        h += '</div>';
 
-        for (const m of recentMovements) {
-          const badge = m.type === 'entrada'
-            ? `<span class="badge-e">↑ Entrada</span>`
+        // Line chart
+        h += '<div class="panel">';
+        h += '<div class="panel-head">';
+        h += '<span class="panel-title">Tendencia de Movimientos</span>';
+        h += '<span style="font-size:11px;color:rgba(180,150,255,0.4)">Últimos registros</span>';
+        h += '</div>';
+        h += '<div class="panel-body"><div class="chart-canvas-wrap"><canvas id="chartTrend"></canvas></div></div>';
+        h += '</div>';
+
+        h += '</div>'; // close two-col
+
+        // === Recent movements table ===
+        h += '<div class="panel">';
+        h += '<div class="panel-head">';
+        h += '<span class="panel-title">Últimos Movimientos</span>';
+        h += '<a href="/movimientos" class="see-all">Ver todos →</a>';
+        h += '</div>';
+        h += '<div style="overflow-x:auto">';
+        h += '<table class="mini-table"><thead><tr>';
+        h += '<th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Stock</th><th>Razón</th><th>Fecha</th>';
+        h += '</tr></thead><tbody>';
+
+        for (var j = 0; j < recentMovements.length; j++) {
+          var m = recentMovements[j];
+          var badge = m.type === 'entrada'
+            ? '<span class="badge-e">↑ Entrada</span>'
             : m.type === 'salida'
-            ? `<span class="badge-s">↓ Salida</span>`
-            : `<span class="badge-a">⊙ Ajuste</span>`;
-          const qty = `<span class="${m.type === 'salida' ? 'qty-out' : 'qty-in'}">${m.type === 'salida' ? '−' : '+'}${m.quantity}</span>`;
-          h += `<tr>
-            <td style="color:#e2d9f3;font-weight:500">${m.productName ?? '—'}</td>
-            <td>${badge}</td>
-            <td>${qty}</td>
-            <td style="font-family:monospace;font-weight:600;color:#e2d9f3">${m.newStock}</td>
-            <td>${m.reason ?? '—'}</td>
-            <td style="font-size:10px;white-space:nowrap">${new Date(m.createdAt).toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'})}</td>
-          </tr>`;
+            ? '<span class="badge-s">↓ Salida</span>'
+            : '<span class="badge-a">⊙ Ajuste</span>';
+          var qty = '<span class="' + (m.type === 'salida' ? 'qty-out' : 'qty-in') + '">' + (m.type === 'salida' ? '−' : '+') + m.quantity + '</span>';
+          h += '<tr>';
+          h += '<td style="color:#e2d9f3;font-weight:500">' + (m.productName || '—') + '</td>';
+          h += '<td>' + badge + '</td>';
+          h += '<td>' + qty + '</td>';
+          h += '<td style="font-family:monospace;font-weight:600;color:#e2d9f3">' + m.newStock + '</td>';
+          h += '<td>' + (m.reason || '—') + '</td>';
+          h += '<td style="font-size:10px;white-space:nowrap">' + new Date(m.createdAt).toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'}) + '</td>';
+          h += '</tr>';
         }
 
         h += '</tbody></table></div></div>';
+
         root.innerHTML = h;
 
-        // Chart Initialization
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js';
-        script.onload = function() {
-          const colors = [
-            { bg:'rgba(236,72,153,0.45)',  border:'#ec4899' },
-            { bg:'rgba(6,182,212,0.45)',   border:'#06b6d4' },
-            { bg:'rgba(16,185,129,0.45)',  border:'#10b981' },
-            { bg:'rgba(245,158,11,0.45)',  border:'#f59e0b' },
-            { bg:'rgba(139,92,246,0.45)',  border:'#8b5cf6' },
-            { bg:'rgba(244,63,94,0.45)',   border:'#f43f5e' },
-          ];
+        // Esperar un frame para que el DOM se renderice y luego crear charts
+        setTimeout(function() { createCharts(data); }, 100);
 
-          // 1. Bar Chart: Products by Category
-          const ctxCat = document.getElementById('chartCat') as HTMLCanvasElement;
-          // @ts-ignore
-          new Chart(ctxCat.getContext('2d'), {
-            type: 'bar',
-            data: {
-              labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
-              datasets: [{
-                label: 'Productos',
-                data: byCategory.map((c: any) => c.count),
-                backgroundColor: colors.map(c => c.bg),
-                borderColor: colors.map(c => c.border),
-                borderWidth: 2, borderRadius: 8, borderSkipped: false,
-              }],
-            },
-            options: {
-              responsive: true,
-              plugins: { legend: { display: false } },
-              scales: {
-                y: { beginAtZero: true, ticks: { stepSize: 1, color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
-                x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
-              },
-            },
-          });
-
-          // 2. Doughnut Chart: Value by Category
-          const ctxVal = document.getElementById('chartVal') as HTMLCanvasElement;
-          // @ts-ignore
-          new Chart(ctxVal.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-              labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
-              datasets: [{
-                data: byCategory.map((c: any) => c.value),
-                backgroundColor: colors.map(c => c.bg),
-                borderColor: colors.map(c => c.border),
-                borderWidth: 2,
-                hoverOffset: 10
-              }],
-            },
-            options: {
-              responsive: true,
-              plugins: { legend: { display: false } },
-              cutout: '70%',
-            },
-          });
-
-          // 3. Line Chart: Movement Trends
-          const ctxMove = document.getElementById('chartMove') as HTMLCanvasElement;
-          const moveData = [...recentMovements].reverse();
-          // @ts-ignore
-          new Chart(ctxMove.getContext('2d'), {
-            type: 'line',
-            data: {
-              labels: moveData.map((m: any) => new Date(m.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })),
-              datasets: [{
-                label: 'Stock Final',
-                data: moveData.map((m: any) => m.newStock),
-                borderColor: '#a855f7',
-                backgroundColor: 'rgba(168,85,247,0.1)',
-                borderWidth: 3,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 4,
-                pointBackgroundColor: '#a855f7',
-                pointBorderColor: '#fff',
-              }],
-            },
-            options: {
-              responsive: true,
-              plugins: { legend: { display: false } },
-              scales: {
-                y: { ticks: { color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
-                x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
-              },
-            },
-          });
-        };
-        document.head.appendChild(script);
-
-      } catch (err: any) {
-        document.getElementById('dash')!.innerHTML =
-          `<div style="text-align:center;padding:60px;color:rgba(180,150,255,0.4)">
-            <p style="font-size:32px;margin-bottom:10px">💥</p>
-            <p style="font-weight:700;color:#f87171">Error cargando dashboard</p>
-            <p style="font-size:12px;margin-top:6px">${err.message}</p>
-          </div>`;
+      } catch (err) {
+        root.innerHTML =
+          '<div style="text-align:center;padding:60px;color:rgba(180,150,255,0.4)">' +
+          '<p style="font-size:32px;margin-bottom:10px">💥</p>' +
+          '<p style="font-weight:700;color:#f87171">Error cargando dashboard</p>' +
+          '<p style="font-size:12px;margin-top:6px">' + err.message + '</p></div>';
       }
     }
 
-    function kpi(icon: string, label: string, value: any, color: string, sub: string) {
-      return `<div class="kpi-card kpi-${color}">
-        <p class="kpi-label">${label}</p>
-        <div class="kpi-row"><span class="kpi-icon">${icon}</span><span class="kpi-value">${value}</span></div>
-        ${sub ? `<p class="kpi-sub">${sub}</p>` : ''}
-      </div>`;
+    function createCharts(data) {
+      if (typeof Chart === 'undefined') {
+        console.warn('[Dashboard] Chart.js no disponible, reintentando...');
+        setTimeout(function() { createCharts(data); }, 500);
+        return;
+      }
+
+      var byCategory = data.byCategory;
+      var recentMovements = data.recentMovements;
+
+      var colors = [
+        { bg:'rgba(236,72,153,0.45)',  border:'#ec4899' },
+        { bg:'rgba(6,182,212,0.45)',   border:'#06b6d4' },
+        { bg:'rgba(16,185,129,0.45)',  border:'#10b981' },
+        { bg:'rgba(245,158,11,0.45)',  border:'#f59e0b' },
+        { bg:'rgba(139,92,246,0.45)',  border:'#8b5cf6' },
+        { bg:'rgba(244,63,94,0.45)',   border:'#f43f5e' },
+        { bg:'rgba(99,102,241,0.45)',  border:'#6366f1' },
+        { bg:'rgba(20,184,166,0.45)',  border:'#14b8a6' },
+      ];
+
+      // ═══ CHART 1: Bar - Productos por Categoría ═══
+      var catCanvas = document.getElementById('chartCat');
+      if (catCanvas) {
+        new Chart(catCanvas.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: byCategory.map(function(c) { return c.categoryName || 'Sin categoría'; }),
+            datasets: [{
+              label: 'Productos',
+              data: byCategory.map(function(c) { return c.count; }),
+              backgroundColor: colors.map(function(c) { return c.bg; }),
+              borderColor: colors.map(function(c) { return c.border; }),
+              borderWidth: 2, borderRadius: 8, borderSkipped: false,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, ticks: { stepSize: 1, color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
+              x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
+            },
+          },
+        });
+        console.log('[Dashboard] ✅ Gráfica de barras creada');
+      }
+
+      // ═══ CHART 2: Donut - Distribución de Valor ═══
+      var donutCanvas = document.getElementById('chartDonut');
+      if (donutCanvas && byCategory.length > 0) {
+        var donutLabels = [];
+        var donutData = [];
+        var donutColors = [];
+        var donutBorders = [];
+
+        for (var i = 0; i < byCategory.length; i++) {
+          var cat = byCategory[i];
+          var val = parseFloat(cat.totalValue) || (cat.count * 100);
+          donutLabels.push(cat.categoryName || 'Sin categoría');
+          donutData.push(val);
+          donutColors.push(colors[i % colors.length].bg);
+          donutBorders.push(colors[i % colors.length].border);
+        }
+
+        new Chart(donutCanvas.getContext('2d'), {
+          type: 'doughnut',
+          data: {
+            labels: donutLabels,
+            datasets: [{
+              data: donutData,
+              backgroundColor: donutColors,
+              borderColor: donutBorders,
+              borderWidth: 2,
+              hoverOffset: 8,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '60%',
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: 'rgba(180,150,255,0.6)', padding: 12, font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 }
+              },
+            },
+          },
+        });
+        console.log('[Dashboard] ✅ Gráfica de dona creada');
+      }
+
+      // ═══ CHART 3: Line - Tendencia de Movimientos ═══
+      var trendCanvas = document.getElementById('chartTrend');
+      if (trendCanvas && recentMovements.length > 0) {
+        var trendLabels = [];
+        var trendEntradas = [];
+        var trendSalidas = [];
+
+        // Agrupar movimientos por fecha
+        var grouped = {};
+        for (var k = recentMovements.length - 1; k >= 0; k--) {
+          var mv = recentMovements[k];
+          var dateKey = new Date(mv.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+          if (!grouped[dateKey]) { grouped[dateKey] = { entradas: 0, salidas: 0 }; }
+          if (mv.type === 'entrada') { grouped[dateKey].entradas += mv.quantity; }
+          else if (mv.type === 'salida') { grouped[dateKey].salidas += mv.quantity; }
+        }
+
+        var keys = Object.keys(grouped);
+        for (var g = 0; g < keys.length; g++) {
+          trendLabels.push(keys[g]);
+          trendEntradas.push(grouped[keys[g]].entradas);
+          trendSalidas.push(grouped[keys[g]].salidas);
+        }
+
+        new Chart(trendCanvas.getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: trendLabels,
+            datasets: [
+              {
+                label: 'Entradas',
+                data: trendEntradas,
+                borderColor: '#34d399',
+                backgroundColor: 'rgba(52,211,153,0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#34d399',
+                pointRadius: 4,
+              },
+              {
+                label: 'Salidas',
+                data: trendSalidas,
+                borderColor: '#f87171',
+                backgroundColor: 'rgba(248,113,113,0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#f87171',
+                pointRadius: 4,
+              }
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { color: 'rgba(180,150,255,0.6)', padding: 12, font: { size: 11 }, usePointStyle: true }
+              },
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
+              x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
+            },
+          },
+        });
+        console.log('[Dashboard] ✅ Gráfica de tendencia creada');
+      }
     }
 
-    async function checkAlerts() {
-      const btn = document.querySelector('.btn-alert') as HTMLButtonElement;
+    function kpi(icon, label, value, color, sub) {
+      return '<div class="kpi-card kpi-' + color + '">' +
+        '<p class="kpi-label">' + label + '</p>' +
+        '<div class="kpi-row"><span class="kpi-icon">' + icon + '</span><span class="kpi-value">' + value + '</span></div>' +
+        (sub ? '<p class="kpi-sub">' + sub + '</p>' : '') +
+      '</div>';
+    }
+
+    function checkAlerts() {
+      var btn = document.querySelector('.btn-alert');
       if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
-      try {
-        const res  = await fetch('/api/alerts', { method: 'POST' });
-        const data = await res.json();
-        alert(data.message ?? 'Alerta procesada');
-      } catch { alert('Error al enviar'); }
-      finally { if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Enviar alerta por email`; } }
+      fetch('/api/alerts', { method: 'POST' })
+        .then(function(res) { return res.json(); })
+        .then(function(data) { alert(data.message || 'Alerta procesada'); })
+        .catch(function() { alert('Error al enviar'); })
+        .finally(function() {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Enviar alerta por email';
+          }
+        });
     }
 
-    (window as any).checkAlerts = checkAlerts;
     loadDashboard();
   </script>
 </Layout>
