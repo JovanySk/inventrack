@@ -148,17 +148,32 @@ import Layout from '../layouts/Layout.astro';
           </div>`;
         }
 
-        // Two columns
-        h += '<div class="two-col">';
+        // Three-column grid for charts
+        h += '<div class="two-col" style="grid-template-columns: 2fr 1fr; margin-bottom: 20px;">';
 
-        // Chart panel
+        // Main Bar Chart
         h += `<div class="panel">
           <div class="panel-head">
             <span class="panel-title">Productos por Categoría</span>
             <span style="font-size:11px;color:rgba(180,150,255,0.4)">${byCategory.length} categorías</span>
           </div>
-          <div class="panel-body"><canvas id="chartCat" height="200"></canvas></div>
+          <div class="panel-body"><canvas id="chartCat" height="140"></canvas></div>
         </div>`;
+
+        // Doughnut Chart
+        h += `<div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">Distribución de Valor</span>
+            <span style="font-size:11px;color:rgba(180,150,255,0.4)">Valor total</span>
+          </div>
+          <div class="panel-body" style="display:flex; justify-content:center; align-items:center;">
+            <div style="width:100%; max-width:180px;"><canvas id="chartVal" height="180"></canvas></div>
+          </div>
+        </div>`;
+        h += '</div>';
+
+        // Second row: Stock alerts & Movement trends
+        h += '<div class="two-col">';
 
         // Low stock panel
         h += `<div class="panel">
@@ -186,12 +201,22 @@ import Layout from '../layouts/Layout.astro';
           </button>`;
         }
         h += '</div></div>';
-        h += '</div>'; // two-col
 
-        // Recent movements
+        // Movement Trend Chart
         h += `<div class="panel">
           <div class="panel-head">
-            <span class="panel-title">Últimos Movimientos</span>
+            <span class="panel-title">Tendencia de Movimientos</span>
+            <span style="font-size:11px;color:rgba(180,150,255,0.4)">Últimos registros</span>
+          </div>
+          <div class="panel-body"><canvas id="chartMove" height="140"></canvas></div>
+        </div>`;
+
+        h += '</div>'; // second row
+
+        // Recent movements table
+        h += `<div class="panel" style="margin-top: 20px;">
+          <div class="panel-head">
+            <span class="panel-title">Historial Reciente</span>
             <a href="/movimientos" class="see-all">Ver todos →</a>
           </div>
           <div style="overflow-x:auto">
@@ -221,12 +246,10 @@ import Layout from '../layouts/Layout.astro';
         h += '</tbody></table></div></div>';
         root.innerHTML = h;
 
-        // Chart
+        // Chart Initialization
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js';
         script.onload = function() {
-          const canvas = document.getElementById('chartCat') as HTMLCanvasElement;
-          if (!canvas) return;
           const colors = [
             { bg:'rgba(236,72,153,0.45)',  border:'#ec4899' },
             { bg:'rgba(6,182,212,0.45)',   border:'#06b6d4' },
@@ -235,8 +258,11 @@ import Layout from '../layouts/Layout.astro';
             { bg:'rgba(139,92,246,0.45)',  border:'#8b5cf6' },
             { bg:'rgba(244,63,94,0.45)',   border:'#f43f5e' },
           ];
+
+          // 1. Bar Chart: Products by Category
+          const ctxCat = document.getElementById('chartCat') as HTMLCanvasElement;
           // @ts-ignore
-          new Chart(canvas.getContext('2d'), {
+          new Chart(ctxCat.getContext('2d'), {
             type: 'bar',
             data: {
               labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
@@ -257,8 +283,62 @@ import Layout from '../layouts/Layout.astro';
               },
             },
           });
+
+          // 2. Doughnut Chart: Value by Category
+          const ctxVal = document.getElementById('chartVal') as HTMLCanvasElement;
+          // @ts-ignore
+          new Chart(ctxVal.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+              labels: byCategory.map((c: any) => c.categoryName || 'Sin categoría'),
+              datasets: [{
+                data: byCategory.map((c: any) => c.value),
+                backgroundColor: colors.map(c => c.bg),
+                borderColor: colors.map(c => c.border),
+                borderWidth: 2,
+                hoverOffset: 10
+              }],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+              cutout: '70%',
+            },
+          });
+
+          // 3. Line Chart: Movement Trends (Aggregated by day)
+          const ctxMove = document.getElementById('chartMove') as HTMLCanvasElement;
+          const moveData = [...recentMovements].reverse();
+          // @ts-ignore
+          new Chart(ctxMove.getContext('2d'), {
+            type: 'line',
+            data: {
+              labels: moveData.map((m: any) => new Date(m.createdAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })),
+              datasets: [{
+                label: 'Stock Final',
+                data: moveData.map((m: any) => m.newStock),
+                borderColor: '#a855f7',
+                backgroundColor: 'rgba(168,85,247,0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: '#a855f7',
+                pointBorderColor: '#fff',
+              }],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+              scales: {
+                y: { ticks: { color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
+                x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
+              },
+            },
+          });
         };
         document.head.appendChild(script);
+
 
       } catch (err: any) {
         document.getElementById('dash')!.innerHTML =
