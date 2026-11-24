@@ -204,7 +204,7 @@ inventario-app/
 
 ---
 
-## 👥 Colaboración en equipo
+## 🐳 Desarrollo local con Docker
 
 ```bash
 # Clonar
@@ -235,4 +235,4 @@ docker compose up
 
 ---
 
-*TSBD-U2 · Equipo 3 · 2024*
+*Autor: **Jovany Morales del Ángel** · 2026*

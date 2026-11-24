@@ -211,7 +211,6 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO usuarios (correo_electronico, nombre, hash_contrasena, rol) VALUES
   ('admin@inventrack.com',    'Administrador', crypt('admin123', gen_salt('bf', 10)), 'admin'),
-  ('equipo3@inventrack.com',  'Equipo 3',      crypt('equipo123', gen_salt('bf', 10)), 'admin'),
   ('empleado@inventrack.com', 'Empleado',      crypt('empleado123', gen_salt('bf', 10)), 'empleado'),
   ('demo@inventrack.com',     'Demo',          crypt('demo123', gen_salt('bf', 10)), 'demo')
 ON CONFLICT DO NOTHING;
