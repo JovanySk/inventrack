@@ -1,6 +1,7 @@
 ---
 // Página de confirmación de cuenta, InvenTrack
 import '../styles/global.css';
+import { copyrightLine, CREDIT_LINE } from '@/lib/footer';
 
 const url = new URL(Astro.request.url);
 const success = url.searchParams.get('success') === 'true';
@@ -59,5 +60,11 @@ const already = url.searchParams.get('already') === 'true';
       )}
     </div>
   </main>
+  <footer class="mini-footer">
+    <div class="wrap">
+      <p>{copyrightLine()}</p>
+      <p class="credit">{CREDIT_LINE}</p>
+    </div>
+  </footer>
 </body>
 </html>

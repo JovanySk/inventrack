@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
 
+// Borra el JWT y las cookies de interfaz que crea el login.
+const SESSION_COOKIES = ['inventrack-token', 'inventrack-user', 'inventrack-email', 'inventrack-role', 'inventrack-session'];
+
 export const GET: APIRoute = async ({ cookies, redirect }) => {
-  cookies.delete('inventrack-session', { path: '/' });
-  cookies.delete('inventrack-user',    { path: '/' });
-  cookies.delete('inventrack-email',   { path: '/' }); // Fix A-4: borrar todas las cookies de sesión
+  for (const name of SESSION_COOKIES) cookies.delete(name, { path: '/' });
   return redirect('/login');
 };

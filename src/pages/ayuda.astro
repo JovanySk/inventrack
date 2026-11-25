@@ -1,0 +1,234 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const sections = [
+  { id: 'guia',        label: 'Guía rápida' },
+  { id: 'existencias', label: 'Existencias y alertas' },
+  { id: 'movimientos', label: 'Movimientos' },
+  { id: 'xml',         label: 'Importar y exportar' },
+  { id: 'roles',       label: 'Roles y permisos' },
+  { id: 'atajos',      label: 'Atajos de teclado' },
+  { id: 'preguntas',   label: 'Preguntas frecuentes' },
+];
+
+const steps = [
+  { title: 'Revisa el resumen', text: 'Al entrar ves el carrusel con los totales del día, el producto más urgente por reabastecer y lo más vendido del mes, además de los KPIs, los pasillos y los últimos movimientos.', href: '/', cta: 'Ir al resumen' },
+  { title: 'Encuentra un producto', text: 'Escribe nombre, SKU o pasillo en el buscador del encabezado. En Productos puedes filtrar por pasillo, ver solo los de stock bajo o agotados y cambiar el orden.', href: '/productos', cta: 'Ver productos' },
+  { title: 'Registra cada movimiento', text: 'En la tarjeta del producto pulsa «Mover» para registrar una entrada, una salida o un ajuste. Antes de guardar se muestra la existencia resultante.', href: '/productos', cta: 'Registrar movimiento' },
+  { title: 'Atiende las alertas', text: 'Alertas ordena por urgencia los productos que están en o bajo su mínimo, con el pedido sugerido y su costo, y muestra el correo que se enviará al proveedor.', href: '/alertas', cta: 'Ver alertas' },
+  { title: 'Respalda el catálogo', text: 'Desde Importar XML descargas el inventario completo o cargas productos en lote desde un archivo.', href: '/xml', cta: 'Importar o exportar' },
+];
+
+const levels = [
+  { badge: 'badge-danger',  name: 'Agotado',    rule: 'La existencia es 0.' },
+  { badge: 'badge-danger',  name: 'Crítico',    rule: 'Queda el 25 % del mínimo o menos.' },
+  { badge: 'badge-warning', name: 'Bajo',       rule: 'La existencia está en el mínimo o por debajo.' },
+  { badge: 'badge-success', name: 'Disponible', rule: 'La existencia está por encima del mínimo.' },
+];
+
+const perms = [
+  { what: 'Ver productos, pasillos, movimientos y alertas', admin: true,  emp: true,  demo: true },
+  { what: 'Descargar el inventario en XML',                 admin: true,  emp: true,  demo: true },
+  { what: 'Crear y editar productos',                       admin: true,  emp: true,  demo: false },
+  { what: 'Crear y eliminar pasillos',                      admin: true,  emp: true,  demo: false },
+  { what: 'Registrar entradas, salidas y ajustes',          admin: true,  emp: true,  demo: false },
+  { what: 'Importar productos desde XML',                   admin: true,  emp: true,  demo: false },
+  { what: 'Generar la alerta por correo',                   admin: true,  emp: true,  demo: false },
+  { what: 'Eliminar productos',                             admin: true,  emp: false, demo: false },
+  { what: 'Consultar usuarios',                             admin: true,  emp: false, demo: false },
+];
+
+const shortcuts = [
+  { keys: ['Esc'],     where: 'Ventanas de producto, movimiento, registro y recuperación de contraseña', what: 'Cierra la ventana abierta.' },
+  { keys: ['←', '→'],  where: 'Carrusel del resumen (con el foco dentro)', what: 'Pasa a la diapositiva anterior o siguiente.' },
+  { keys: ['←', '→'],  where: 'Pestañas de «Productos por surtir» en el resumen', what: 'Cambia de pestaña.' },
+  { keys: ['Enter'],   where: 'Buscador del encabezado', what: 'Busca en Productos por nombre, SKU o pasillo.' },
+  { keys: ['Enter', 'Espacio'], where: 'Zona de carga de Importar XML', what: 'Abre el selector de archivo.' },
+];
+
+const faqs = [
+  { q: '¿Por qué un producto aparece en Alertas?', a: 'Porque su existencia está en su mínimo o por debajo. Sale de la lista en cuanto registras una entrada que lo deja por encima del mínimo.' },
+  { q: '¿Cómo se calcula el pedido sugerido?', a: 'Son las piezas que faltan para llegar al doble del mínimo, con un pedido de al menos 1 pieza. El costo estimado multiplica esas piezas por el precio del producto.' },
+  { q: '¿Cuándo se envía el correo de alerta?', a: 'Cada vez que un movimiento deja un producto en su mínimo o por debajo, y también cuando un administrador o empleado pulsa «Generar alerta por correo» en Alertas. Si el envío de correo no está configurado, la alerta queda en el registro del servidor y la página indica que está en modo registro.' },
+  { q: '¿Qué pasa si registro una salida mayor a la existencia?', a: 'La existencia queda en 0; nunca baja de cero. El movimiento guarda la existencia anterior y la nueva.' },
+  { q: '¿Puedo deshacer un movimiento?', a: 'Los movimientos no se borran para conservar el historial. Para corregir uno, registra un ajuste con la existencia correcta o el movimiento contrario.' },
+  { q: '¿Qué pasa al importar un SKU que ya existe?', a: 'Ese producto se omite y no se modifica. Al terminar ves cuántos productos se importaron y cuántos se omitieron.' },
+  { q: '¿Qué pasa si elimino un producto?', a: 'Se desactiva: deja de aparecer en el catálogo, las alertas y la cinta de productos, pero sus movimientos se conservan en el historial.' },
+  { q: '¿Cómo cambio la foto de un producto?', a: 'Edita el producto y elige una foto del catálogo de imágenes de la bodega. Si no eliges ninguna, se usa la que coincide con su nombre o la de su pasillo.' },
+  { q: '¿Por qué no veo la sección Usuarios?', a: 'Solo la ven los administradores. Las cuentas de empleado y de solo lectura regresan al resumen si intentan abrirla.' },
+  { q: '¿Cuánto dura la sesión?', a: 'Ocho horas. Después tendrás que iniciar sesión de nuevo. Tras cinco contraseñas incorrectas seguidas, la cuenta se bloquea 15 minutos.' },
+];
+---
+
+<Layout title="Ayuda" eyebrow="Bodega · guía de uso" subtitle="Cómo funciona InvenTrack: existencias, movimientos, alertas, archivos XML y permisos.">
+  <style>
+    .help { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 40px; align-items: start; }
+    .help-index { position: sticky; top: 20px; background: var(--ink); padding: 18px 0 10px; }
+    .help-index .eyebrow { color: var(--yellow); padding: 0 18px 10px; }
+    .help-index ol { list-style: none; margin: 0; padding: 0; counter-reset: idx; }
+    .help-index a {
+      display: flex; gap: 10px; align-items: center; padding: 9px 18px; color: #D8DBDF; text-decoration: none;
+      font: 600 14px/1.3 var(--font-sans); counter-increment: idx;
+    }
+    .help-index a::before { content: counter(idx, decimal-leading-zero); font: 800 15px/1 var(--font-display); color: var(--yellow); min-width: 20px; }
+    .help-index a:hover { background: var(--ink-2); color: var(--yellow); }
+
+    .help-sec { scroll-margin-top: 20px; margin-bottom: 44px; }
+    .help-sec > .sec-title { margin-bottom: 18px; }
+    .help-sec > p { margin: 0 0 18px; color: var(--text-2); max-width: 760px; }
+
+    .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: step; }
+    .step { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 16px; align-items: center; background: #fff; border: 1px solid var(--border); padding: 16px 18px; counter-increment: step; }
+    .step::before { content: counter(step, decimal-leading-zero); display: grid; place-items: center; height: 48px; background: var(--yellow); font: 800 26px/1 var(--font-display); }
+    .step h3 { margin: 0; font: 800 21px/1.05 var(--font-display); text-transform: uppercase; }
+    .step p { margin: 4px 0 0; font-size: 14px; color: var(--text-2); }
+
+    .levels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .level { background: #fff; border: 1px solid var(--border); padding: 14px 16px; }
+    .level p { margin: 10px 0 0; font-size: 14px; }
+
+    .mtypes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .mtype { background: #fff; border: 1px solid var(--border); border-top: 4px solid var(--ink); padding: 14px 16px; }
+    .mtype b { font: 800 22px/1 var(--font-display); text-transform: uppercase; }
+    .mtype p { margin: 8px 0 0; font-size: 14px; color: var(--text-2); }
+
+    .perm-yes { color: var(--green); font-weight: 700; }
+    .perm-no  { color: var(--steel-light); }
+
+    kbd {
+      display: inline-grid; place-items: center; min-width: 30px; height: 28px; padding: 0 8px; margin-right: 4px;
+      background: #fff; border: 2px solid var(--ink); box-shadow: 0 2px 0 var(--ink);
+      font: 700 12.5px/1 var(--font-mono);
+    }
+
+    .faq { display: grid; gap: 10px; }
+    .faq details { background: #fff; border: 1px solid var(--border); }
+    .faq details[open] { border-color: var(--ink); }
+    .faq summary {
+      display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 18px; cursor: pointer; list-style: none;
+      font: 600 15.5px/1.35 var(--font-sans);
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after { content: "+"; font: 800 24px/1 var(--font-display); flex-shrink: 0; }
+    .faq details[open] summary::after { content: "–"; }
+    .faq details p { margin: 0; padding: 0 18px 16px; color: var(--text-2); font-size: 14.5px; max-width: 760px; }
+
+    @media (max-width: 960px) {
+      .help { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+      .help-index { position: static; }
+      .help-index ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .help-index ol { grid-template-columns: minmax(0, 1fr); }
+      .step { grid-template-columns: 44px minmax(0, 1fr); }
+      .step::before { height: 40px; font-size: 22px; }
+      .step .btn { grid-column: 2; justify-self: start; }
+      .mtypes { grid-template-columns: minmax(0, 1fr); }
+      .levels { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+
+  <div class="help">
+    <nav class="help-index" aria-label="Contenido de la ayuda">
+      <div class="eyebrow">Contenido</div>
+      <ol>
+        {sections.map(s => <li><a href={`#${s.id}`}>{s.label}</a></li>)}
+      </ol>
+    </nav>
+
+    <div>
+      <section class="help-sec" id="guia">
+        <h2 class="sec-title">Guía rápida</h2>
+        <p>El recorrido de todos los días en la bodega, en cinco pasos.</p>
+        <ol class="steps">
+          {steps.map(s => (
+            <li class="step">
+              <div><h3>{s.title}</h3><p>{s.text}</p></div>
+              <a class="btn btn-secondary btn-sm" href={s.href}>{s.cta}</a>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section class="help-sec" id="existencias">
+        <h2 class="sec-title">Existencias y alertas</h2>
+        <p>Cada producto tiene una existencia mínima. El nivel se calcula comparando la existencia actual con ese mínimo, y la barra de disponibilidad se llena al 100 % cuando la existencia llega al doble del mínimo.</p>
+        <div class="levels">
+          {levels.map(l => (
+            <div class="level"><span class={`badge ${l.badge}`}>{l.name}</span><p>{l.rule}</p></div>
+          ))}
+        </div>
+        <p>Los productos agotados, críticos y bajos aparecen en <a class="link" href="/alertas">Alertas</a> y el número entre paréntesis en la navegación indica cuántos son.</p>
+      </section>
+
+      <section class="help-sec" id="movimientos">
+        <h2 class="sec-title">Movimientos</h2>
+        <p>Cada cambio de existencia queda registrado con la cantidad, el motivo, la existencia anterior y la nueva. La actualización del producto y el registro del movimiento se guardan juntos, así que nunca queda uno sin el otro.</p>
+        <div class="mtypes">
+          <div class="mtype"><b class="qty-in">Entrada</b><p>Suma la cantidad a la existencia: compras, devoluciones de clientes.</p></div>
+          <div class="mtype"><b>Salida</b><p>Resta la cantidad: ventas, mermas. Si la cantidad es mayor, la existencia queda en 0.</p></div>
+          <div class="mtype"><b class="qty-adj">Ajuste</b><p>Fija la existencia en la cantidad indicada, por ejemplo después de un conteo físico.</p></div>
+        </div>
+      </section>
+
+      <section class="help-sec" id="xml">
+        <h2 class="sec-title">Importar y exportar</h2>
+        <p><b>Exportar:</b> descarga un archivo <span class="mono">inventario_AAAA-MM-DD.xml</span> con todos los productos (nombre, SKU, pasillo, precio, existencia, mínimo y unidad) y un resumen con el total de productos, el valor del inventario y cuántos tienen stock bajo.</p>
+        <p><b>Importar:</b> acepta un archivo <span class="mono">.xml</span> de hasta 2 MB. El pasillo se asigna por nombre de categoría; si no existe, el producto queda sin pasillo. Los SKU que ya existen se omiten. El formato esperado está en la página <a class="link" href="/xml">Importar XML</a>.</p>
+      </section>
+
+      <section class="help-sec" id="roles">
+        <h2 class="sec-title">Roles y permisos</h2>
+        <p>Cada cuenta tiene uno de tres roles y la pantalla muestra solo las acciones que tu rol puede hacer. Los cambios de productos, movimientos e importaciones también se validan en el servidor.</p>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Acción</th><th class="c">Administrador</th><th class="c">Empleado</th><th class="c">Solo lectura</th></tr></thead>
+              <tbody>
+                {perms.map(p => (
+                  <tr>
+                    <td>{p.what}</td>
+                    {[p.admin, p.emp, p.demo].map(ok => (
+                      <td class="c">{ok ? <span class="perm-yes">Sí</span> : <span class="perm-no">No</span>}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="help-sec" id="atajos">
+        <h2 class="sec-title">Atajos de teclado</h2>
+        <p>Todo el sistema se puede usar con teclado: <kbd>Tab</kbd> recorre los controles y <kbd>Enter</kbd> los activa. Además:</p>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Tecla</th><th>Dónde</th><th>Qué hace</th></tr></thead>
+              <tbody>
+                {shortcuts.map(s => (
+                  <tr>
+                    <td class="nowrap">{s.keys.map(k => <kbd>{k}</kbd>)}</td>
+                    <td>{s.where}</td>
+                    <td>{s.what}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="help-sec" id="preguntas">
+        <h2 class="sec-title">Preguntas frecuentes</h2>
+        <div class="faq">
+          {faqs.map(f => (
+            <details><summary>{f.q}</summary><p>{f.a}</p></details>
+          ))}
+        </div>
+      </section>
+    </div>
+  </div>
+</Layout>

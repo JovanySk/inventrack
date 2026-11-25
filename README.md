@@ -21,6 +21,11 @@
 | **Movimientos**: historial con filtros por tipo | **Pasillos**: categorías con foto y número de productos |
 | ![Importar XML](docs/screenshots/07-importar-xml.png) | ![Registrar movimiento](docs/screenshots/10-registrar-movimiento.png) |
 | **Importar XML** y exportación del inventario | **Registrar movimiento** con vista previa de la existencia resultante |
+| ![Ayuda](docs/screenshots/ayuda.png) | ![Usuarios](docs/screenshots/11-usuarios.png) |
+| **Ayuda**: guía rápida, niveles de existencia, movimientos, XML, roles y permisos, atajos de teclado y preguntas frecuentes | **Usuarios**: cuentas y roles (solo administradores) |
+
+<p align="center"><img src="docs/screenshots/footer.png" alt="Pie de página con columnas de enlaces, redes y créditos" width="900"></p>
+<p align="center"><sub><b>Pie de página</b> en todas las páginas internas: franja de seguridad, columnas Inventario, Herramientas, Cuenta y Ayuda (solo enlaces a páginas existentes), redes sociales próximamente y créditos. El login muestra la versión mínima.</sub></p>
 
 <p align="center">
   <img src="docs/screenshots/08-movil-resumen.png" alt="Resumen en móvil" width="260">
@@ -259,14 +264,17 @@ inventario-app/
     │   ├── xml.ts              ← Export/Import XML
     │   ├── email.ts            ← Alertas Resend
     │   └── exchangeRate.ts     ← API tipo de cambio
+    ├── components/
+    │   └── SiteFooter.astro    ← Pie de página (enlaces en src/lib/footer.ts)
     ├── layouts/
-    │   └── Layout.astro        ← Encabezado, navegación y cinta de productos
+    │   └── Layout.astro        ← Encabezado, navegación, cinta de productos y pie
     ├── pages/
     │   ├── index.astro         ← Dashboard + gráficas
     │   ├── productos.astro     ← CRUD productos
     │   ├── categorias.astro    ← CRUD categorías
     │   ├── movimientos.astro   ← Historial movimientos
     │   ├── xml.astro           ← Import/Export XML
+    │   ├── ayuda.astro         ← Guía rápida, roles, atajos y preguntas frecuentes
     │   └── api/
     │       ├── products/       ← REST API productos
     │       ├── categories/     ← REST API categorías

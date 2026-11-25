@@ -7,6 +7,7 @@ if (cookie?.value === 'authenticated') {
 // Patrón PRG: el POST siempre redirige, el error viene en ?e=
 import '../styles/global.css';
 import { EMAIL_REGEX } from '@/lib/validation';
+import { copyrightLine, CREDIT_LINE } from '@/lib/footer';
 
 import bcrypt from 'bcryptjs';
 import { db } from '@/db';
@@ -127,8 +128,8 @@ try {
   <title>Iniciar sesión · InvenTrack</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <style>
-    body { min-height: 100vh; background: #fff; }
-    .auth { display: grid; grid-template-columns: minmax(0, 780fr) minmax(0, 660fr); min-height: 100vh; }
+    body { min-height: 100vh; display: flex; flex-direction: column; background: #fff; }
+    .auth { display: grid; grid-template-columns: minmax(0, 780fr) minmax(0, 660fr); flex: 1 0 auto; }
 
     .auth-side {
       position: relative; overflow: hidden; color: #fff;
@@ -275,6 +276,13 @@ try {
       </div>
     </main>
   </div>
+
+  <footer class="mini-footer">
+    <div class="wrap">
+      <p>{copyrightLine()}</p>
+      <p class="credit">{CREDIT_LINE}</p>
+    </div>
+  </footer>
 
   <!-- Modal: recuperar contraseña -->
   <div class="modal-overlay" id="modalForgot" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">

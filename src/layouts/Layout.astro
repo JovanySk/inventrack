@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import SiteFooter from '@/components/SiteFooter.astro';
 import { db } from '@/db';
 import { products, categories } from '@/db/schema';
 import { sql, and, eq, asc } from 'drizzle-orm';
@@ -83,7 +84,7 @@ const star = '<svg class="marquee-star" viewBox="0 0 24 24" aria-hidden="true"><
   <title>{title} · InvenTrack</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </head>
-<body>
+<body class="app-shell">
   <header class="site-header">
     <div class="wrap">
       <a class="logo" href="/" aria-label="InvenTrack, ir al resumen"><b>INVEN</b><span>TRACK</span></a>
@@ -146,6 +147,8 @@ const star = '<svg class="marquee-star" viewBox="0 0 24 24" aria-hidden="true"><
       <slot />
     </div>
   </main>
+
+  <SiteFooter role={userRole} />
 
   <script>
     // Llegar a una página interna implica login exitoso: limpiar contadores de intentos.
