@@ -23,6 +23,7 @@ export const GET: APIRoute = async () => {
     // ── Productos y valor por categoria ─────────────────────────────
     const byCategory = await db
       .select({
+        categoryId:   categories.id,
         categoryName: categories.name,
         count:        count(products.id),
         value:        sql<number>`COALESCE(SUM(${products.price} * ${products.stock}), 0)`,
@@ -30,7 +31,7 @@ export const GET: APIRoute = async () => {
       .from(products)
       .leftJoin(categories, eq(products.categoryId, categories.id))
       .where(active)
-      .groupBy(categories.name)
+      .groupBy(categories.id, categories.name)
       .orderBy(desc(sql`COALESCE(SUM(${products.price} * ${products.stock}), 0)`));
 
     // ── Productos con stock bajo ────────────────────────────────────

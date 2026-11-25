@@ -395,9 +395,8 @@ const escHtml = (v: unknown) => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Cantidad sugerida para volver a 2 veces el mínimo. */
-export function suggestedOrder(p: Pick<LowStockProduct, 'stock' | 'minStock'>): number {
-  return Math.max(p.minStock * 2 - p.stock, 1);
-}
+export { suggestedOrder } from './catalog';
+import { suggestedOrder } from './catalog';
 
 /** Construye asunto, HTML y texto del correo de stock bajo (se usa para enviar y para la vista previa). */
 export function renderLowStockAlertEmail(products: LowStockProduct[]): { subject: string; html: string; text: string } {

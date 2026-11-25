@@ -13,7 +13,8 @@ const PUBLIC_API = ['/api/forgot-password', '/api/auth/register', '/api/auth/con
 // ── Rate Limiter en Memoria ──
 const rateLimitCache = new Map<string, { count: number, resetTime: number }>();
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
-const MAX_REQUESTS = 150;
+// En desarrollo Vite sirve cada módulo como petición aparte: se usa un límite mayor.
+const MAX_REQUESTS = import.meta.env.DEV ? 5000 : 150;
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();

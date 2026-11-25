@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS productos (
   existencia  INTEGER NOT NULL DEFAULT 0        CHECK (existencia >= 0),
   existencia_minima INTEGER NOT NULL DEFAULT 5 CHECK (existencia_minima >= 0),
   unidad      VARCHAR(20) DEFAULT 'pza',
+  imagen      VARCHAR(255),
   esta_activo BOOLEAN DEFAULT TRUE,
   fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   fecha_actualizacion TIMESTAMP WITH TIME ZONE DEFAULT NOW()

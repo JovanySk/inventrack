@@ -10,8 +10,8 @@ import { EMAIL_REGEX } from '@/lib/validation';
 
 import bcrypt from 'bcryptjs';
 import { db } from '@/db';
-import { users, rolePermissions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { users, rolePermissions, products, categories, stockMovements } from '@/db/schema';
+import { eq, count, sql } from 'drizzle-orm';
 import { SignJWT } from 'jose';
 import { logger } from '@/lib/logger';
 
@@ -105,183 +105,175 @@ const ERR_MESSAGES: Record<string, string> = {
 };
 const errorCode = new URL(Astro.request.url).searchParams.get('e') || '';
 const errorMsg  = ERR_MESSAGES[errorCode] || '';
+
+// Cifras del panel lateral (conteos agregados, sin datos sensibles)
+let stats: { products: string; categories: string; movements: string } | null = null;
+try {
+  const [[p], [c], [m]] = await Promise.all([
+    db.select({ n: count(products.id) }).from(products).where(eq(products.isActive, true)),
+    db.select({ n: count(categories.id) }).from(categories),
+    db.select({ n: count(stockMovements.id) }).from(stockMovements).where(sql`${stockMovements.createdAt} >= CURRENT_DATE - INTERVAL '29 days'`),
+  ]);
+  const f = (n: unknown) => Number(n).toLocaleString('es-MX');
+  stats = { products: f(p.n), categories: f(c.n), movements: f(m.n) };
+} catch { stats = null; }
 ---
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#141414" />
   <title>Iniciar sesión · InvenTrack</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <style>
-    body { min-height: 100vh; }
-    .auth { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); min-height: 100vh; }
-    .auth-main { display: flex; flex-direction: column; padding: 28px 40px; background: var(--surface); }
-    .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
-    .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; }
-    .brand-mark svg { width: 16px; height: 16px; }
-    .brand b { font-size: 15px; font-weight: 650; letter-spacing: -0.02em; }
-    .form-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 0; }
-    .form-box { width: 100%; max-width: 360px; }
-    .form-box h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -0.025em; }
-    .form-box > p { margin: 6px 0 24px; color: var(--text-2); font-size: 14px; }
-    .stack { display: grid; gap: 16px; }
+    body { min-height: 100vh; background: #fff; }
+    .auth { display: grid; grid-template-columns: minmax(0, 780fr) minmax(0, 660fr); min-height: 100vh; }
+
+    .auth-side {
+      position: relative; overflow: hidden; color: #fff;
+      background: var(--yellow) url('/img/productos/banner-herramientas.webp') no-repeat 60% center / cover;
+      display: flex; flex-direction: column; padding: 56px 56px 48px;
+    }
+    .auth-side::before {
+      content: ""; position: absolute; inset: 0; background: var(--ink);
+      clip-path: polygon(0 0, 66.7% 0, 48.7% 100%, 0 100%);
+    }
+    .auth-side > * { position: relative; max-width: 380px; }
+    .auth-side .logo { align-self: flex-start; }
+    .side-copy { margin-top: auto; }
+    .side-copy h2 { margin: 0; font: 800 clamp(48px, 5.4vw, 80px)/.98 var(--font-display); text-transform: uppercase; letter-spacing: -.01em; }
+    .side-copy h2 em { font-style: normal; color: var(--yellow); }
+    .side-copy p { margin: 24px 0 0; font-size: 17px; line-height: 1.65; color: #D8DBDF; max-width: 360px; }
+    .side-stats { display: flex; gap: 36px; margin-top: 50px; margin-bottom: auto; }
+    .side-stats b { display: block; font: 800 40px/1 var(--font-display); color: var(--yellow); font-variant-numeric: tabular-nums; }
+    .side-stats span { display: block; margin-top: 4px; font: 700 11px/1 var(--font-sans); letter-spacing: .14em; text-transform: uppercase; }
+
+    .auth-main { display: flex; align-items: center; padding: 48px 110px; background: #fff; }
+    .form-box { width: 100%; max-width: 440px; }
+    .form-box h1 { margin: 14px 0 26px; font: 800 52px/1 var(--font-display); text-transform: uppercase; letter-spacing: -.005em; }
+    .stack { display: grid; gap: 18px; }
+    .auth .input { height: 52px; background: var(--concrete); border: 2px solid var(--ink); font-size: 16px; }
+    .auth .input:focus { background: #fff; }
     .pass-wrap { position: relative; }
-    .pass-wrap .input { padding-right: 40px; }
-    .toggle-pass { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
-    .input-status { display: none; font-size: 12px; }
+    .pass-wrap .input { padding-right: 48px; }
+    .toggle-pass { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+    .input-status { display: none; font-size: 13px; font-weight: 600; }
     .input-status.show { display: block; }
-    .input-status.valid { color: var(--success); }
-    .input-status.invalid { color: var(--danger); }
-    .input.input-error { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
-    .btn-login { height: 38px; font-size: 14px; position: relative; }
+    .input-status.valid { color: var(--green); }
+    .input-status.invalid { color: var(--red); }
+    .input.input-error { border-color: var(--red); box-shadow: 0 0 0 3px var(--danger-soft); }
+    .row-end { display: flex; justify-content: flex-end; margin-top: -4px; }
+    .text-btn { background: none; border: 0; padding: 0; cursor: pointer; font: 700 14px/1.4 var(--font-sans); color: var(--ink); }
+    .text-btn:hover { text-decoration: underline; text-decoration-color: var(--yellow-deep); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+    .btn-login { height: 58px; font-size: 17px; letter-spacing: .12em; position: relative; }
     .btn-login .btn-loader { display: none; }
     .btn-login.loading .btn-text { visibility: hidden; }
     .btn-login.loading .btn-loader { display: grid; place-items: center; position: absolute; inset: 0; }
-    .row-between { display: flex; justify-content: space-between; align-items: center; }
-    .text-btn { background: none; border: 0; padding: 0; cursor: pointer; font: 500 12.5px/1.4 var(--font-sans); color: var(--accent-text); }
-    .text-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
-    .lockout-bar { display: none; height: 3px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+    .lockout-bar { display: none; height: 4px; background: var(--surface-3); overflow: hidden; }
     .lockout-bar.show { display: block; }
-    .lockout-fill { height: 100%; background: var(--warning); transition: width .3s; }
-    .attempts-text { display: none; font-size: 12px; color: var(--warning); }
+    .lockout-fill { height: 100%; background: var(--yellow-deep); transition: width .3s; }
+    .attempts-text { display: none; font-size: 13px; font-weight: 600; color: var(--gold-text); }
     .attempts-text.show { display: block; }
-    .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 14px; font-size: 12px; color: var(--text-3); }
-    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-    .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .demo-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 10px 12px; text-align: left; }
-    .demo-btn b { font-weight: 600; font-size: 13px; }
-    .demo-btn span { font-size: 12px; color: var(--text-3); font-weight: 400; }
-    .auth-foot { font-size: 12px; color: var(--text-3); }
-
-    .auth-side {
-      position: relative; overflow: hidden;
-      display: flex; flex-direction: column; justify-content: center; gap: 28px;
-      padding: 56px; background: var(--surface-2); border-left: 1px solid var(--border);
+    .divider { display: flex; align-items: center; gap: 12px; margin: 26px 0 18px; font: 700 12px/1 var(--font-sans); letter-spacing: .14em; color: var(--steel); text-transform: uppercase; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border-strong); }
+    .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .demo-btn {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 16px; text-align: left;
+      background: #fff; border: 2px solid var(--ink); cursor: pointer; color: var(--ink);
+      transition: background-color .15s, transform .15s var(--ease), box-shadow .15s var(--ease);
     }
-    .auth-side::before {
-      content: ""; position: absolute; inset: 0; pointer-events: none;
-      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
-      background-size: 32px 32px; opacity: .55;
-      mask-image: radial-gradient(ellipse 80% 70% at 60% 40%, #000 30%, transparent 75%);
-    }
-    .side-copy { position: relative; max-width: 460px; }
-    .side-copy h2 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -0.03em; }
-    .side-copy p { margin: 12px 0 0; color: var(--text-2); font-size: 14.5px; line-height: 1.6; }
-    .preview { position: relative; max-width: 460px; display: grid; gap: 12px; }
-    .pv-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
-    .pv-kpis { display: grid; grid-template-columns: repeat(3, 1fr); }
-    .pv-kpi { padding: 14px 16px; }
-    .pv-kpi + .pv-kpi { border-left: 1px solid var(--border); }
-    .pv-kpi .k { font-size: 11.5px; color: var(--text-3); }
-    .pv-kpi .v { margin-top: 4px; font-size: 18px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-    .pv-bars { display: flex; align-items: flex-end; gap: 5px; height: 64px; padding: 14px 16px 0; }
-    .pv-bars i { flex: 1; border-radius: 2px 2px 0 0; background: var(--accent); opacity: .85; }
-    .pv-bars i:nth-child(even) { background: var(--chart-2); }
-    .pv-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; font-size: 12.5px; }
-    .pv-row + .pv-row { border-top: 1px solid var(--border); }
-    .pv-row .n { font-weight: 500; }
-    .pv-row .s { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
-    .pv-cap { font-size: 12px; color: var(--text-3); padding: 12px 16px 0; font-weight: 500; }
+    .demo-btn:hover { background: var(--yellow); transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--ink); }
+    .demo-btn b { font: 700 14px/1 var(--font-sans); letter-spacing: .08em; text-transform: uppercase; }
+    .demo-btn span { font-size: 13px; color: var(--steel); }
+    .demo-btn:hover span { color: var(--ink); }
+    .signup { margin: 22px 0 0; font-size: 14px; color: var(--steel); }
 
-    .modal-msg { display: none; font-size: 13px; padding: 10px 12px; border-radius: var(--radius); margin-top: 12px; }
+    .modal-msg { display: none; font-size: 14px; padding: 10px 12px; margin-top: 12px; border-left: 4px solid; }
     .modal-msg.show { display: block; }
-    .modal-msg.success { background: var(--success-soft); color: var(--success); }
-    .modal-msg.error { background: var(--danger-soft); color: var(--danger); }
-    .input.error { border-color: var(--danger); }
-    .pass-strength { height: 3px; width: 0; border-radius: 99px; transition: width .2s, background-color .2s; }
+    .modal-msg.success { background: var(--success-soft); color: var(--green); }
+    .modal-msg.error { background: var(--danger-soft); color: var(--red); }
+    .input.error { border-color: var(--red); }
+    .pass-strength { height: 4px; width: 0; transition: width .2s, background-color .2s; }
 
-    @media (max-width: 960px) {
+    @media (max-width: 1100px) { .auth-main { padding: 48px 56px; } }
+    @media (max-width: 900px) {
       .auth { grid-template-columns: minmax(0, 1fr); }
-      .auth-side { display: none; }
-      .auth-main { padding: 20px 16px; }
+      .auth-side { padding: 22px 18px 26px; background-position: 70% 60%; }
+      .auth-side::before { clip-path: polygon(0 0, 100% 0, 100% 62%, 0 100%); }
+      .side-copy { margin-top: 26px; }
+      .side-copy h2 { font-size: 40px; }
+      .side-copy p, .side-stats { display: none; }
+      .auth-main { padding: 28px 18px 40px; }
+      .form-box h1 { font-size: 40px; }
     }
   </style>
 </head>
 <body>
   <div class="auth">
-    <main class="auth-main">
-      <a class="brand" href="/login">
-        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5Z"/><path d="M4 8.5 12 13l8-4.5M12 13v7"/></svg></span>
-        <b>InvenTrack</b>
-      </a>
-
-      <div class="form-wrap">
-        <div class="form-box">
-          <h1>Inicia sesión</h1>
-          <p>Gestiona existencias, movimientos y alertas de tu almacén.</p>
-
-          {errorMsg && (
-            <div class="notice danger alert-error" role="alert" style="margin-bottom:16px">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          <form method="POST" id="loginForm" class="stack" novalidate>
-            <div class="field">
-              <label class="label" for="emailInput">Correo electrónico</label>
-              <input type="email" name="email" id="emailInput" class="input" placeholder="nombre@empresa.com" required autocomplete="username" />
-              <div class="input-status" id="emailStatus"></div>
-            </div>
-
-            <div class="field">
-              <div class="row-between">
-                <label class="label" for="passInput">Contraseña</label>
-                <button type="button" class="text-btn" id="openForgot">Olvidé mi contraseña</button>
-              </div>
-              <div class="pass-wrap">
-                <input type="password" name="password" id="passInput" class="input" placeholder="Tu contraseña" required autocomplete="current-password" />
-                <button type="button" class="icon-btn toggle-pass" id="togglePass" aria-label="Mostrar contraseña"></button>
-              </div>
-              <div class="input-status" id="passStatus"></div>
-            </div>
-
-            <button type="submit" class="btn btn-primary btn-block btn-login" id="loginBtn">
-              <span class="btn-text">Iniciar sesión</span>
-              <span class="btn-loader"><span class="spinner"></span></span>
-            </button>
-
-            <div class="lockout-bar" id="lockoutBar"><div class="lockout-fill" id="lockoutFill" style="width:0%"></div></div>
-            <div class="attempts-text" id="attemptsText"></div>
-          </form>
-
-          <div class="divider">Cuentas de demostración</div>
-          <div class="demo-grid">
-            <button type="button" class="btn btn-secondary demo-btn" data-email="admin@inventrack.com" data-pass="admin123"><b>Administrador</b><span>Acceso completo</span></button>
-            <button type="button" class="btn btn-secondary demo-btn" data-email="demo@inventrack.com" data-pass="demo123"><b>Demo</b><span>Solo lectura</span></button>
-          </div>
-
-          <p style="margin:20px 0 0;font-size:13px;color:var(--text-2)">No tienes cuenta? <button type="button" class="text-btn" id="openRegister" style="font-size:13px">Solicitar acceso</button></p>
-        </div>
-      </div>
-
-      <div class="auth-foot">InvenTrack, gestión de inventario</div>
-    </main>
-
-    <aside class="auth-side" aria-hidden="true">
+    <aside class="auth-side">
+      <a class="logo" href="/login" aria-label="InvenTrack"><b>INVEN</b><span>TRACK</span></a>
       <div class="side-copy">
-        <h2>Sabe qué hay en tu almacén antes de que se acabe.</h2>
-        <p>Existencias en tiempo real, historial de cada movimiento y alertas automáticas cuando un producto llega a su mínimo.</p>
+        <h2>Tu bodega,<br>contada <em>pieza por</em><br>pieza.</h2>
+        <p>Inventario, entradas, salidas y alertas de una ferretería y papelería, en un solo lugar.</p>
       </div>
-      <div class="preview">
-        <div class="pv-card">
-          <div class="pv-kpis">
-            <div class="pv-kpi"><div class="k">Valor en almacén</div><div class="v">$184,320</div></div>
-            <div class="pv-kpi"><div class="k">Productos</div><div class="v">32</div></div>
-            <div class="pv-kpi"><div class="k">Bajo mínimo</div><div class="v" style="color:var(--warning)">8</div></div>
-          </div>
-          <div class="pv-cap" style="border-top:1px solid var(--border)">Entradas y salidas, 14 días</div>
-          <div class="pv-bars">
-            <i style="height:40%"></i><i style="height:62%"></i><i style="height:30%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:45%"></i><i style="height:36%"></i><i style="height:70%"></i><i style="height:52%"></i><i style="height:28%"></i><i style="height:90%"></i><i style="height:48%"></i><i style="height:60%"></i><i style="height:38%"></i>
-          </div>
+      {stats && (
+        <div class="side-stats" aria-label="Estado del catálogo">
+          <div><b>{stats.products}</b><span>Productos</span></div>
+          <div><b>{stats.categories}</b><span>Pasillos</span></div>
+          <div><b>{stats.movements}</b><span>Movimientos</span></div>
         </div>
-        <div class="pv-card" style="margin-left:48px">
-          <div class="pv-row"><div><div class="n">Disco de corte metal 4 1/2"</div><div class="s">HE-0204</div></div><span class="badge badge-danger">Agotado</span></div>
-          <div class="pv-row"><div><div class="n">Pintura vinilica blanca 19 L</div><div class="s">PA-0401</div></div><span class="badge badge-warning">2 de 4</span></div>
-        </div>
-      </div>
+      )}
     </aside>
+
+    <main class="auth-main">
+      <div class="form-box">
+        <div class="eyebrow">Acceso al sistema</div>
+        <h1>Entra a tu bodega</h1>
+
+        {errorMsg && (
+          <div class="notice danger alert-error" role="alert" style="margin-bottom:16px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        <form method="POST" id="loginForm" class="stack" novalidate>
+          <div class="field">
+            <label class="label" for="emailInput">Correo</label>
+            <input type="email" name="email" id="emailInput" class="input" placeholder="nombre@empresa.com" required autocomplete="username" />
+            <div class="input-status" id="emailStatus"></div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="passInput">Contraseña</label>
+            <div class="pass-wrap">
+              <input type="password" name="password" id="passInput" class="input" placeholder="Tu contraseña" required autocomplete="current-password" />
+              <button type="button" class="icon-btn toggle-pass" id="togglePass" aria-label="Mostrar contraseña"></button>
+            </div>
+            <div class="input-status" id="passStatus"></div>
+          </div>
+
+          <div class="row-end"><button type="button" class="text-btn" id="openForgot">¿Olvidaste tu contraseña?</button></div>
+
+          <button type="submit" class="btn btn-primary btn-hard btn-block btn-login" id="loginBtn">
+            <span class="btn-text">Entrar</span>
+            <span class="btn-loader"><span class="spinner"></span></span>
+          </button>
+
+          <div class="lockout-bar" id="lockoutBar"><div class="lockout-fill" id="lockoutFill" style="width:0%"></div></div>
+          <div class="attempts-text" id="attemptsText"></div>
+        </form>
+
+        <div class="divider">O prueba la demo</div>
+        <div class="demo-grid">
+          <button type="button" class="demo-btn" data-email="admin@inventrack.com" data-pass="admin123"><b>Administrador</b><span>acceso completo</span></button>
+          <button type="button" class="demo-btn" data-email="demo@inventrack.com" data-pass="demo123"><b>Consulta</b><span>solo lectura</span></button>
+        </div>
+
+        <p class="signup">¿No tienes cuenta? <button type="button" class="text-btn" id="openRegister">Solicita acceso con tu correo de la empresa</button></p>
+      </div>
+    </main>
   </div>
 
   <!-- Modal: recuperar contraseña -->
@@ -389,7 +381,7 @@ const errorMsg  = ERR_MESSAGES[errorCode] || '';
       if (/[0-9]/.test(v)) score++;
       if (/[^a-zA-Z0-9]/.test(v)) score++;
       var bar = document.getElementById('passStrengthBar');
-      var colors = ['var(--danger)', 'var(--warning)', 'var(--accent)', 'var(--success)'];
+      var colors = ['var(--red)', 'var(--yellow-deep)', 'var(--yellow)', 'var(--green)'];
       bar.style.width = (score * 25) + '%';
       bar.style.background = colors[score - 1] || 'transparent';
     });

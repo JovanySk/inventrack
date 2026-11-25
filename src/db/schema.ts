@@ -60,6 +60,8 @@ export const products = pgTable('productos', {
   stock: integer('existencia').notNull().default(0),
   minStock: integer('existencia_minima').notNull().default(5),
   unit: varchar('unidad', { length: 20 }).default('pza'),
+  // Ruta pública de la foto (/img/productos/...). Null = foto por nombre o categoría.
+  image: varchar('imagen', { length: 255 }),
   isActive: boolean('esta_activo').default(true),
   createdAt: timestamp('fecha_creacion', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('fecha_actualizacion', { withTimezone: true }).defaultNow(),

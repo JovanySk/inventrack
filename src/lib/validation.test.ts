@@ -39,5 +39,12 @@ describe('Validation Utils', () => {
       const errors = validateProductBody(product);
       expect(errors).toContain('Precio inválido (debe ser ≥ 0)');
     });
+
+    it('debería aceptar solo fotos del catálogo', () => {
+      const base = { name: 'Taladro', price: '100', stock: '1', minStock: '1' };
+      expect(validateProductBody({ ...base, image: '/img/productos/taladro.webp' })).toHaveLength(0);
+      expect(validateProductBody({ ...base, image: 'https://otro.sitio/foto.png' }))
+        .toContain('Imagen inválida: elige una foto del catálogo');
+    });
   });
 });

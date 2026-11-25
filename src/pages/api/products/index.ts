@@ -37,6 +37,13 @@ export const GET: APIRoute = async ({ url }) => {
         stock:        products.stock,
         minStock:     products.minStock,
         unit:         products.unit,
+        image:        products.image,
+        // Actividad para tarjetas, orden "más vendidos" y "entradas recientes"
+        unitsOut30:   sql<number>`COALESCE((SELECT SUM(m.cantidad) FROM movimientos_inventario m WHERE m.producto_id = ${products.id} AND m.tipo = 'salida' AND m.fecha_creacion >= NOW() - INTERVAL '30 days'), 0)::int`,
+        unitsOut7:    sql<number>`COALESCE((SELECT SUM(m.cantidad) FROM movimientos_inventario m WHERE m.producto_id = ${products.id} AND m.tipo = 'salida' AND m.fecha_creacion >= NOW() - INTERVAL '7 days'), 0)::int`,
+        unitsOutToday: sql<number>`COALESCE((SELECT SUM(m.cantidad) FROM movimientos_inventario m WHERE m.producto_id = ${products.id} AND m.tipo = 'salida' AND m.fecha_creacion >= date_trunc('day', NOW())), 0)::int`,
+        lastEntryAt:  sql<string | null>`(SELECT MAX(m.fecha_creacion) FROM movimientos_inventario m WHERE m.producto_id = ${products.id} AND m.tipo = 'entrada')`,
+        lastEntryQty: sql<number | null>`(SELECT m.cantidad FROM movimientos_inventario m WHERE m.producto_id = ${products.id} AND m.tipo = 'entrada' ORDER BY m.fecha_creacion DESC LIMIT 1)`,
         createdAt:    products.createdAt,
         updatedAt:    products.updatedAt,
       })
@@ -64,7 +71,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return new Response(JSON.stringify({ error: errors.join('. ') }), { status: 400 });
     }
 
-    const { name, description, sku, categoryId, price, stock, minStock, unit } = body;
+    const { name, description, sku, categoryId, price, stock, minStock, unit, image } = body;
 
     const [product] = await db.insert(products).values({
       name,
@@ -75,6 +82,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       stock:       parseInt(stock),
       minStock:    parseInt(minStock),
       unit:        unit ?? 'pza',
+      image:       image || null,
     }).returning();
 
     // Auditoría

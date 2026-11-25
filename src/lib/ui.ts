@@ -65,3 +65,40 @@ export function skeletonRows(cols: number, rows = 6): string {
   }
   return html;
 }
+
+// ── Movimiento (respeta prefers-reduced-motion, sin listeners de scroll) ──
+
+export function reducedMotion(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+let barObserver: IntersectionObserver | null = null;
+
+/** Llena las barras .bar-fill[data-pct] cuando entran en pantalla. */
+export function observeBars(root: ParentNode = document): void {
+  const bars = root.querySelectorAll<HTMLElement>('.bar-fill[data-pct]');
+  const fill = (el: HTMLElement) => { el.style.width = (el.dataset.pct || '0') + '%'; };
+  if (reducedMotion() || typeof IntersectionObserver === 'undefined') { bars.forEach(fill); return; }
+  barObserver ??= new IntersectionObserver((entries, obs) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      fill(e.target as HTMLElement);
+      obs.unobserve(e.target);
+    }
+  }, { threshold: 0.2 });
+  bars.forEach(el => barObserver!.observe(el));
+}
+
+/** Cuenta de 0 al valor final; con movimiento reducido muestra el valor directamente. */
+export function countUp(el: HTMLElement, to: number, format: (n: number) => string, duration = 900): void {
+  if (reducedMotion() || to === 0) { el.textContent = format(to); return; }
+  const start = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = format(t === 1 ? to : to * eased);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  el.textContent = format(0);
+  requestAnimationFrame(step);
+}

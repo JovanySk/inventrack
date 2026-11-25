@@ -4,14 +4,18 @@ const role = Astro.cookies.get('inventrack-role')?.value || 'demo';
 const canEdit = role === 'admin' || role === 'empleado';
 ---
 
-<Layout title="Categorías" subtitle="Organiza el catálogo por familias de producto">
+<Layout title="Pasillos" eyebrow="Bodega · categorías" subtitle="Cada pasillo agrupa una familia de productos del catálogo.">
   <style is:global>
     .cat-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
-    .cat-mark { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent-text); flex-shrink: 0; }
+    .cat-mark { width: 56px; height: 56px; object-fit: contain; background: #fff; border: 4px solid var(--yellow); flex-shrink: 0; }
+    .cat-aisle { font: 700 11px/1 var(--font-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--steel); }
+    .cat-cell a { color: inherit; text-decoration: none; }
+    .cat-cell a:hover .cell-title { text-decoration: underline; text-decoration-color: var(--yellow-deep); text-decoration-thickness: 2px; text-underline-offset: 3px; }
     .cat-cell { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .share { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
-    .share-track { width: 80px; height: 4px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
-    .share-track span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+    .share-track { width: 96px; height: 6px; background: var(--border); overflow: hidden; }
+    .share-track span { display: block; height: 100%; background: var(--yellow-deep); }
+    .share .num { font: 800 22px/1 var(--font-display); }
     @media (max-width: 900px) { .cat-layout { grid-template-columns: minmax(0, 1fr); } }
   </style>
 
@@ -30,7 +34,7 @@ const canEdit = role === 'admin' || role === 'empleado';
 
     {canEdit ? (
       <form class="card" id="catForm">
-        <div class="card-head"><div><h3 class="card-title">Nueva categoría</h3><p class="card-sub">Aparecerá en filtros y formularios.</p></div></div>
+        <div class="card-head"><div><h3 class="card-title">Nuevo pasillo</h3><p class="card-sub">Crea una categoría; aparecerá en filtros y formularios.</p></div></div>
         <div class="card-body" style="display:grid;gap:14px">
           <div class="field">
             <label class="label" for="catName">Nombre</label>
@@ -41,7 +45,7 @@ const canEdit = role === 'admin' || role === 'empleado';
             <textarea id="catDesc" class="textarea" rows="2" placeholder="Opcional"></textarea>
           </div>
           <div id="formMsg" class="notice" style="display:none"></div>
-          <button class="btn btn-primary btn-block" type="submit">Agregar categoría</button>
+          <button class="btn btn-primary btn-block" type="submit">Agregar pasillo</button>
         </div>
       </form>
     ) : (
@@ -53,6 +57,7 @@ const canEdit = role === 'admin' || role === 'empleado';
 
   <script>
     import { esc, toast, icons, stateHtml, skeletonRows } from '@/lib/ui';
+    import { categoryImage } from '@/lib/catalog';
 
     const canEdit = document.getElementById('perm')!.dataset.edit === '1';
     const list = document.getElementById('categoriesList')!;
@@ -65,17 +70,15 @@ const canEdit = role === 'admin' || role === 'empleado';
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Error ' + res.status);
         const total = data.reduce((s: number, c: any) => s + Number(c.productCount), 0) || 1;
-        countEl.innerHTML = '<span>' + data.length + ' categorías</span><span>' + total + ' productos asignados</span>';
+        countEl.innerHTML = '<span>' + data.length + ' pasillos</span><span>' + total + ' productos asignados</span>';
         if (data.length === 0) {
           list.innerHTML = '<tr><td colspan="3">' + stateHtml('empty', 'Sin categorías', 'Crea la primera con el formulario.') + '</td></tr>';
           return;
         }
-        list.innerHTML = data.map((c: any) => {
+        list.innerHTML = [...data].sort((a: any, b: any) => a.id - b.id).map((c: any) => {
           const n = Number(c.productCount);
-          const words = c.name.split(/\s+/).filter((w: string) => w.length > 2);
-          const initials = (words.length > 1 ? words.map((w: string) => w[0]).join('') : c.name).slice(0, 2).toUpperCase();
           return '<tr>' +
-            '<td><div class="cat-cell"><span class="cat-mark">' + esc(initials) + '</span><div style="min-width:0"><div class="cell-title">' + esc(c.name) + '</div><div class="cell-sub">' + esc(c.description || 'Sin descripción') + '</div></div></div></td>' +
+            '<td><div class="cat-cell"><img class="cat-mark" src="' + esc(categoryImage(c.name)) + '" alt="" loading="lazy"><a href="/productos?pasillo=' + c.id + '" style="min-width:0"><div class="cat-aisle">Pasillo ' + c.id + '</div><div class="cell-title">' + esc(c.name) + '</div><div class="cell-sub">' + esc(c.description || 'Sin descripción') + '</div></a></div></td>' +
             '<td class="r"><span class="share"><span class="share-track hide-sm"><span style="width:' + Math.max(3, (n / total) * 100 * 2.5) + '%"></span></span><span class="num" style="min-width:20px">' + n + '</span></span></td>' +
             '<td class="r">' + (canEdit ? '<button class="icon-btn danger" data-id="' + c.id + '" data-name="' + esc(c.name) + '" title="Eliminar" aria-label="Eliminar ' + esc(c.name) + '">' + icons.trash + '</button>' : '') + '</td>' +
           '</tr>';

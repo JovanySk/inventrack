@@ -32,7 +32,7 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
       return new Response(JSON.stringify({ error: errors.join('. ') }), { status: 400 });
     }
 
-    const { name, description, sku, categoryId, price, stock, minStock, unit } = body;
+    const { name, description, sku, categoryId, price, stock, minStock, unit, image } = body;
 
     // Obtener producto anterior para auditoría y movimientos
     const [oldProduct] = await db.select().from(products).where(eq(products.id, id));
@@ -50,6 +50,7 @@ export const PUT: APIRoute = async ({ params, request, locals }) => {
       stock:       newStock,
       minStock:    parseInt(minStock),
       unit:        unit ?? 'pza',
+      image:       image || null,
       updatedAt:   new Date(),
     }).where(eq(products.id, id)).returning();
 

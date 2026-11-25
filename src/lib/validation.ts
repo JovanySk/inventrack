@@ -1,3 +1,5 @@
+import { isValidProductImage } from './catalog';
+
 export function validateProductBody(body: any): string[] {
   const errors: string[] = [];
   const name     = String(body.name ?? '').trim();
@@ -13,6 +15,7 @@ export function validateProductBody(body: any): string[] {
   if (isNaN(minStock) || minStock < 0)  errors.push('Stock mínimo inválido (debe ser ≥ 0)');
   if (body.sku && String(body.sku).length > 50) errors.push('SKU demasiado largo (máximo 50 caracteres)');
   if (body.unit && String(body.unit).length > 20) errors.push('Unidad demasiado larga (máximo 20 caracteres)');
+  if (body.image && !isValidProductImage(body.image)) errors.push('Imagen inválida: elige una foto del catálogo');
   return errors;
 }
 

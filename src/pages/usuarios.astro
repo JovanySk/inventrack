@@ -18,10 +18,10 @@ const roleLabels: Record<string, string> = {
   empleado: 'Empleado',
   demo: 'Solo lectura',
 };
-const roleClass: Record<string, string> = { admin: 'badge-accent', empleado: '', demo: '' };
+const roleClass: Record<string, string> = { admin: 'badge-accent', empleado: 'badge-warning', demo: '' };
 ---
 
-<Layout title="Usuarios" subtitle="Cuentas con acceso al sistema">
+<Layout title="Usuarios" eyebrow="Administración" subtitle="Cuentas con acceso al sistema y su rol.">
   <div class="card">
     <div class="table-wrap">
       <table class="table">

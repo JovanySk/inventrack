@@ -2,7 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 ---
 
-<Layout title="Movimientos" subtitle="Historial de entradas, salidas y ajustes">
+<Layout title="Movimientos" eyebrow="Bodega · historial" subtitle="Entradas, salidas y ajustes de existencia, del más reciente al más antiguo.">
   <div class="toolbar">
     <div class="input-icon grow">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -42,6 +42,7 @@ import Layout from '../layouts/Layout.astro';
 
   <script>
     import { esc, int, dateTime, stateHtml, skeletonRows } from '@/lib/ui';
+    import { productImage } from '@/lib/catalog';
 
     let all: any[] = [];
     let type = '';
@@ -69,8 +70,8 @@ import Layout from '../layouts/Layout.astro';
 
     const badge = (t: string) =>
       t === 'entrada' ? '<span class="badge badge-success">Entrada</span>'
-      : t === 'salida' ? '<span class="badge">Salida</span>'
-      : '<span class="badge badge-accent">Ajuste</span>';
+      : t === 'salida' ? '<span class="badge badge-ink">Salida</span>'
+      : '<span class="badge badge-warning">Ajuste</span>';
 
     function render() {
       const q = search.value.toLowerCase().trim();
@@ -89,12 +90,12 @@ import Layout from '../layouts/Layout.astro';
           : m.type === 'salida' ? '<span class="qty-out">-' + int(m.quantity) + '</span>'
           : '<span class="qty-adj">' + int(m.quantity) + '</span>';
         return '<tr>' +
-          '<td class="nowrap subtle num">' + esc(dateTime(m.createdAt)) + '</td>' +
-          '<td><span class="cell-title">' + esc(m.productName ?? 'Producto eliminado') + '</span></td>' +
+          '<td class="nowrap mono" style="color:var(--steel)">' + esc(dateTime(m.createdAt)) + '</td>' +
+          '<td><div style="display:flex;align-items:center;gap:12px;min-width:0"><img class="thumb" src="' + esc(productImage({ image: m.productImage, name: m.productName })) + '" alt="" loading="lazy"><div style="min-width:0"><div class="cell-title">' + esc(m.productName ?? 'Producto eliminado') + '</div><div class="cell-sub mono">' + esc(m.productSku ?? '') + '</div></div></div></td>' +
           '<td>' + badge(m.type) + '</td>' +
           '<td class="r">' + qty + '</td>' +
           '<td class="r num subtle hide-sm">' + int(m.previousStock) + '</td>' +
-          '<td class="r num" style="font-weight:600">' + int(m.newStock) + '</td>' +
+          '<td class="r" style="font:800 22px/1 var(--font-display)">' + int(m.newStock) + '</td>' +
           '<td class="hide-sm muted"><div class="cell-sub" style="font-size:13px;color:var(--text-2)">' + esc(m.reason ?? '') + '</div></td>' +
         '</tr>';
       }).join('');

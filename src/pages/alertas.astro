@@ -3,115 +3,208 @@ import Layout from '../layouts/Layout.astro';
 import { db } from '@/db';
 import { products, categories } from '@/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
-import { renderLowStockAlertEmail, getEmailMode, getAlertRecipient, suggestedOrder } from '@/lib/email';
+import { renderLowStockAlertEmail, getEmailMode, getAlertRecipient } from '@/lib/email';
+import { sortByUrgency, stockLevel, suggestedOrder, restockSummary, availabilityPct, productImage, aisleLabel, unitLabel, LEVEL_LABEL } from '@/lib/catalog';
 
-let lowStock: Array<{ id: number; name: string; sku: string | null; stock: number; minStock: number; unit: string | null; price: string; categoryName: string | null }> = [];
+type Row = { id: number; name: string; sku: string | null; stock: number; minStock: number; unit: string | null; price: string; image: string | null; categoryId: number | null; categoryName: string | null };
+let lowStock: Row[] = [];
 let loadError = '';
 try {
   lowStock = await db
     .select({
       id: products.id, name: products.name, sku: products.sku, stock: products.stock,
-      minStock: products.minStock, unit: products.unit, price: products.price, categoryName: categories.name,
+      minStock: products.minStock, unit: products.unit, price: products.price, image: products.image,
+      categoryId: products.categoryId, categoryName: categories.name,
     })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
-    .where(and(eq(products.isActive, true), sql`${products.stock} <= ${products.minStock}`))
-    .orderBy(sql`${products.stock}::float / NULLIF(${products.minStock}, 0)`, products.name);
+    .where(and(eq(products.isActive, true), sql`${products.stock} <= ${products.minStock}`));
 } catch (err: any) {
   loadError = err.message;
 }
 
-const items = lowStock.map(p => ({ ...p, sku: p.sku ?? '', unit: p.unit ?? 'pza' }));
+const items = sortByUrgency(lowStock.map(p => ({ ...p, sku: p.sku ?? '', unit: p.unit ?? 'pza' })));
+const summary = restockSummary(items);
 const email = renderLowStockAlertEmail(items);
 const mode = getEmailMode();
 const recipient = getAlertRecipient();
-const outCount = items.filter(p => p.stock === 0).length;
-const restockCost = items.reduce((s, p) => s + suggestedOrder(p) * Number(p.price), 0);
-const money = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
 const role = Astro.cookies.get('inventrack-role')?.value || 'demo';
+const VISIBLE = 5;
+
+const money0 = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
+const int = (n: number) => n.toLocaleString('es-MX');
+const today = new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long' });
 ---
 
-<Layout title="Alertas" subtitle="Productos en o bajo su existencia mínima">
+<Layout title="Alertas" heading={false}>
   <style>
-    .alert-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-    .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-    .sum { padding: 14px 16px; }
-    .sum .k { font-size: 12.5px; color: var(--text-2); font-weight: 500; }
-    .sum .v { margin-top: 6px; font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-    .mail-meta { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 12px; padding: 12px 16px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
-    .mail-meta dt { color: var(--text-3); }
-    .mail-meta dd { margin: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .mail-frame { display: block; width: 100%; height: 940px; border: 0; background: #f5f6f8; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
-    .mode-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
-    @media (max-width: 1100px) { .alert-layout { grid-template-columns: minmax(0, 1fr); } }
-    @media (max-width: 640px) { .summary { grid-template-columns: 1fr 1fr; } .summary > :last-child { grid-column: 1 / -1; } }
+    .alert-banner { position: relative; background: var(--yellow); padding: 36px 40px 56px; display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+    .alert-banner::after {
+      content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 14px;
+      background: repeating-linear-gradient(-60deg, var(--ink) 0 18px, transparent 18px 34px);
+    }
+    .alert-banner h1 { margin: 10px 0 8px; font: 800 clamp(40px, 5vw, 68px)/.92 var(--font-display); text-transform: uppercase; letter-spacing: -.01em; }
+    .alert-banner p { margin: 0; font-size: 18px; font-weight: 600; }
+    .alert-banner .eyebrow { color: var(--ink); }
+    .count-tags { display: flex; gap: 30px; margin-right: 66px; }
+    .count-tag { width: 130px; height: 92px; background: #fff; border: 2px solid var(--ink); box-shadow: var(--shadow-hard); display: grid; place-content: center; text-align: center; }
+    .count-tag b { font: 800 46px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+    .count-tag span { margin-top: 4px; font: 700 12px/1 var(--font-sans); letter-spacing: .14em; text-transform: uppercase; }
+    .count-tag.out b, .count-tag.critical b { color: var(--red); }
+    .count-tag.low b { color: var(--gold-text); }
+
+    .alert-layout { display: grid; grid-template-columns: minmax(0, 836fr) minmax(0, 420fr); gap: 24px; align-items: start; margin-top: 4px; }
+    .alert-layout .sec-head { margin: 32px 0 14px; }
+    .sec-note { font-size: 13px; color: var(--steel); }
+
+    .rlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+    .ritem { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 16px; align-items: center; background: #fff; border-left: 6px solid var(--yellow-deep); padding: 10px 18px 10px 12px; transition: transform .2s var(--ease), box-shadow .2s var(--ease); }
+    .ritem:hover { transform: translateX(3px); box-shadow: var(--shadow-sm); }
+    .ritem.out, .ritem.critical { border-left-color: var(--red); }
+    .ritem img { width: 76px; height: 64px; object-fit: contain; }
+    .r-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 17px; font-weight: 500; }
+    .r-meta { font-size: 12.5px; color: var(--steel); margin: 2px 0 6px; }
+    .ritem .bar { max-width: 300px; }
+    .r-have { margin-top: 5px; font-size: 14px; font-weight: 600; color: var(--gold-text); }
+    .ritem.out .r-have, .ritem.critical .r-have { color: var(--red); }
+    .r-order { text-align: right; }
+    .r-order .k { font: 700 11.5px/1 var(--font-sans); letter-spacing: .14em; color: var(--steel); text-transform: uppercase; }
+    .r-order .v { margin-top: 6px; font: 800 30px/1 var(--font-display); white-space: nowrap; }
+    .r-order .c { margin-top: 4px; font-size: 12.5px; color: var(--steel); }
+    .more-btn { margin-top: 14px; background: none; border: 0; padding: 0; font: 700 14px var(--font-sans); color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--yellow-deep); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+    .rlist .extra { display: none; }
+    .rlist.expanded .extra { display: grid; }
+
+    .mode { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--steel); margin-bottom: 14px; }
+    .mode i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+    .mode.resend i { background: var(--yellow-deep); }
+    .mail { background: #fff; border: 2px solid var(--ink); }
+    .mail-top { background: var(--ink); padding: 16px 20px; }
+    .mail-body { padding: 18px 20px 22px; }
+    .mail-subject { font-weight: 700; font-size: 15px; }
+    .mail-to { font-size: 12.5px; color: var(--steel); margin-top: 2px; }
+    .mail-text { margin: 10px 0 8px; font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+    .mail-rows { list-style: none; margin: 0; padding: 0; }
+    .mail-rows li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 2px solid var(--surface-3); font-size: 14px; }
+    .mail-rows li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .mail-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 16px; }
+    .mail-total .k { font: 700 12px/1 var(--font-sans); letter-spacing: .14em; color: var(--steel); text-transform: uppercase; }
+    .mail-total .v { font: 800 30px/1 var(--font-display); }
+    .send-btn { margin-top: 16px; height: 50px; font-size: 15px; }
+    details.raw { margin-top: 14px; font-size: 13.5px; }
+    details.raw summary { cursor: pointer; font-weight: 700; }
+    .mail-frame { display: block; width: 100%; height: 760px; border: 1px solid var(--border); background: #fff; margin-top: 10px; }
+
+    @media (max-width: 1100px) { .alert-layout { grid-template-columns: minmax(0, 1fr); } .count-tags { margin-right: 0; } }
+    @media (max-width: 640px) {
+      .alert-banner { padding: 24px 18px 46px; }
+      .alert-banner p { font-size: 15px; }
+      .count-tags { gap: 12px; width: 100%; }
+      .count-tag { flex: 1; width: auto; height: 78px; box-shadow: 3px 3px 0 var(--ink); }
+      .count-tag b { font-size: 36px; }
+      .count-tag span { font-size: 10.5px; letter-spacing: .08em; }
+      .ritem { grid-template-columns: 56px minmax(0, 1fr); padding: 12px; gap: 12px; }
+      .ritem img { width: 56px; height: 56px; }
+      .r-order { grid-column: 2; text-align: left; display: flex; gap: 10px; align-items: baseline; }
+      .r-order .v { font-size: 24px; margin: 0; }
+      .r-name { font-size: 15px; }
+    }
   </style>
 
-  <div class="summary">
-    <div class="card sum"><div class="k">En o bajo el mínimo</div><div class="v" style={items.length ? 'color:var(--warning)' : ''}>{items.length}</div></div>
-    <div class="card sum"><div class="k">Agotados</div><div class="v" style={outCount ? 'color:var(--danger)' : ''}>{outCount}</div></div>
-    <div class="card sum"><div class="k">Costo estimado de reabastecer</div><div class="v">{money(restockCost)}</div></div>
-  </div>
+  <section class="alert-banner" aria-labelledby="alertTitle">
+    <div>
+      <div class="eyebrow">Alertas de stock · {today}</div>
+      <h1 id="alertTitle">{summary.count === 0 ? 'Todo surtido' : `${summary.count} ${summary.count === 1 ? 'producto' : 'productos'} por surtir`}</h1>
+      <p>{summary.count === 0 ? 'Ningún producto está en o bajo su mínimo.' : `Pedido sugerido total: ${int(summary.units)} piezas · costo estimado ${money0(summary.cost)} MXN`}</p>
+    </div>
+    <div class="count-tags">
+      <div class="count-tag out"><b>{summary.out}</b><span>{summary.out === 1 ? 'Agotado' : 'Agotados'}</span></div>
+      <div class="count-tag critical"><b style={summary.critical ? '' : 'color:var(--ink)'}>{summary.critical}</b><span>{summary.critical === 1 ? 'Crítico' : 'Críticos'}</span></div>
+      <div class="count-tag low"><b>{summary.low}</b><span>{summary.low === 1 ? 'Bajo' : 'Bajos'}</span></div>
+    </div>
+  </section>
 
   <div class="alert-layout">
-    <section class="card">
-      <div class="card-head">
-        <div>
-          <h3 class="card-title">Productos por reabastecer</h3>
-          <p class="card-sub">Ordenados por qué tan lejos están de su mínimo</p>
-        </div>
-        <a class="link" href="/productos?filtro=bajo">Abrir en Productos</a>
+    <section>
+      <div class="sec-head">
+        <h2 class="sec-title">Por surtir</h2>
+        <span class="sec-note">Ordenado por urgencia</span>
       </div>
       {loadError ? (
-        <div class="state"><div class="state-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div><div class="state-title">No se pudieron cargar las alertas</div><div class="state-text">{loadError}</div></div>
+        <div class="card"><div class="state"><div class="state-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div><div class="state-title">No se pudieron cargar las alertas</div><div class="state-text">{loadError}</div></div></div>
       ) : items.length === 0 ? (
-        <div class="state"><div class="state-icon success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div><div class="state-title">Sin alertas activas</div><div class="state-text">Todos los productos están por encima de su existencia mínima.</div></div>
+        <div class="card"><div class="state"><div class="state-icon success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div><div class="state-title">Sin alertas activas</div><div class="state-text">Todos los productos están por encima de su existencia mínima.</div></div></div>
       ) : (
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Producto</th><th class="hide-sm">Categoría</th><th class="r">Existencia</th><th class="r">Mínimo</th><th class="r">Sugerido</th></tr></thead>
-            <tbody>
-              {items.map(p => (
-                <tr>
-                  <td><div class="cell-title">{p.name}</div><div class="cell-sub mono">{p.sku}</div></td>
-                  <td class="hide-sm"><span class="tag">{p.categoryName ?? 'Sin categoría'}</span></td>
-                  <td class="r nowrap">
-                    <span class={`badge ${p.stock === 0 ? 'badge-danger' : 'badge-warning'}`}>{p.stock === 0 ? 'Agotado' : `${p.stock} ${p.unit}`}</span>
-                  </td>
-                  <td class="r num subtle">{p.minStock}</td>
-                  <td class="r num" style="font-weight:600">+{suggestedOrder(p)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <ol class="rlist" id="rlist">
+            {items.map((p, i) => {
+              const level = stockLevel(p);
+              const qty = suggestedOrder(p);
+              return (
+                <li class={`ritem ${level}${i >= VISIBLE ? ' extra' : ''}`}>
+                  <img src={productImage(p)} alt="" loading="lazy" />
+                  <div style="min-width:0">
+                    <div class="r-name"><span class={`badge ${level === 'low' ? 'badge-warning' : 'badge-danger'}`}>{LEVEL_LABEL[level]}</span>{p.name}</div>
+                    <div class="r-meta">{p.sku || 'Sin SKU'} · {aisleLabel(p.categoryId)}</div>
+                    <div class="bar"><span class={`bar-fill ${level}`} data-pct={availabilityPct(p)}></span></div>
+                    <div class="r-have">Hay {int(p.stock)} · mínimo {int(p.minStock)}</div>
+                  </div>
+                  <div class="r-order">
+                    <div class="k">Pedir</div>
+                    <div class="v">{int(qty)} {unitLabel(p.unit, qty)}</div>
+                    <div class="c">{money0(qty * Number(p.price))}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+          {items.length > VISIBLE && <button type="button" class="more-btn" id="moreBtn" aria-controls="rlist" aria-expanded="false">+ {items.length - VISIBLE} productos más con stock bajo</button>}
+        </>
       )}
-      <div class="card-foot">
-        <span class="mode-pill">
-          <span class={`badge ${mode === 'resend' ? 'badge-success' : 'badge-accent'}`}>{mode === 'resend' ? 'Envío por Resend' : 'Modo registro'}</span>
-          {mode === 'resend' ? `Destino: ${recipient}` : 'Sin RESEND_API_KEY: las alertas se escriben en la consola'}
-        </span>
-        {role !== 'demo' && items.length > 0 && <button id="sendAlert" class="btn btn-primary btn-sm">{mode === 'resend' ? 'Enviar alerta ahora' : 'Generar alerta'}</button>}
-      </div>
     </section>
 
-    <section class="card">
-      <div class="card-head">
-        <div>
-          <h3 class="card-title">Vista previa del correo</h3>
-          <p class="card-sub">Mismo contenido que se envía con cada alerta</p>
+    <aside>
+      <div class="sec-head">
+        <h2 class="sec-title">Correo al proveedor</h2>
+      </div>
+      <div class={`mode ${mode}`}><i></i>{mode === 'resend' ? `Envío por Resend a ${recipient}` : 'Modo registro: el correo se guarda en el log, no se envía'}</div>
+      <div class="mail">
+        <div class="mail-top"><span class="logo sm" aria-hidden="true"><b>INVEN</b><span>TRACK</span></span></div>
+        <div class="mail-body">
+          <div class="mail-subject">Asunto: {email.subject}</div>
+          <div class="mail-to">Para: {recipient}</div>
+          <p class="mail-text">Hola, te compartimos el pedido sugerido para reponer los productos en o bajo su mínimo:</p>
+          <ul class="mail-rows">
+            {items.slice(0, 4).map(p => { const q = suggestedOrder(p); return <li><span>{p.name}</span><span>{int(q)} {unitLabel(p.unit, q)}</span></li>; })}
+            {items.length > 4 && <li><span>y {items.length - 4} productos más</span><span></span></li>}
+          </ul>
+          <div class="mail-total"><span class="k">Total estimado</span><span class="v">{money0(summary.cost)} MXN</span></div>
         </div>
       </div>
-      <dl class="mail-meta">
-        <dt>Para</dt><dd>{recipient}</dd>
-        <dt>Asunto</dt><dd>{email.subject}</dd>
-      </dl>
-      <iframe class="mail-frame" title="Vista previa del correo de alerta" srcdoc={email.html} sandbox=""></iframe>
-    </section>
+      {role !== 'demo' && items.length > 0 && (
+        <button id="sendAlert" class="btn btn-primary btn-block send-btn">Generar alerta por correo</button>
+      )}
+      {role === 'demo' && <p class="hint" style="margin-top:12px">Tu rol es de solo lectura: un administrador puede generar la alerta.</p>}
+      <details class="raw">
+        <summary>Ver el correo HTML completo</summary>
+        <iframe class="mail-frame" title="Vista previa del correo de alerta" srcdoc={email.html} sandbox="" loading="lazy"></iframe>
+      </details>
+    </aside>
   </div>
 
   <script>
-    import { toast } from '@/lib/ui';
+    import { toast, observeBars } from '@/lib/ui';
+    observeBars();
+    const more = document.getElementById('moreBtn');
+    const moreLabel = more?.textContent || '';
+    more?.addEventListener('click', () => {
+      const list = document.getElementById('rlist')!;
+      const open = list.classList.toggle('expanded');
+      more.setAttribute('aria-expanded', String(open));
+      more.textContent = open ? 'Mostrar menos' : moreLabel;
+      observeBars(list);
+    });
+
     const btn = document.getElementById('sendAlert') as HTMLButtonElement | null;
     btn?.addEventListener('click', async () => {
       const label = btn.textContent;
