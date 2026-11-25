@@ -5,7 +5,7 @@
 
 import { Resend } from 'resend';
 
-interface LowStockProduct {
+export interface LowStockProduct {
   id: number;
   name: string;
   sku: string;
@@ -14,14 +14,24 @@ interface LowStockProduct {
   unit: string;
 }
 
-// ─── Cliente Resend ───
+// ─── Modo de envio ───
+// Sin RESEND_API_KEY el modo es "log": no se envía ningún correo, solo se
+// escribe destinatario, asunto y texto en la consola del servidor.
+// EMAIL_MODE=log fuerza ese modo aunque exista una API key (util en demos).
+export type EmailMode = 'resend' | 'log';
+
+export function getEmailMode(): EmailMode {
+  if ((process.env.EMAIL_MODE ?? '').toLowerCase() === 'log') return 'log';
+  return process.env.RESEND_API_KEY ? 'resend' : 'log';
+}
+
+export function getAlertRecipient(): string {
+  return process.env.ALERT_EMAIL ?? 'admin@inventracx.cloud';
+}
+
 function getResendClient(): Resend | null {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn('[Email] ⚠️ RESEND_API_KEY no configurada — emails simulados');
-    return null;
-  }
-  return new Resend(apiKey);
+  if (getEmailMode() === 'log') return null;
+  return new Resend(process.env.RESEND_API_KEY);
 }
 
 // ─── Envío genérico ───
@@ -30,10 +40,10 @@ async function sendEmail(to: string, subject: string, html: string, text: string
   const from = `${process.env.SENDER_NAME || 'InvenTrack'} <${process.env.SENDER_EMAIL || 'noreply@inventracx.cloud'}>`;
 
   if (!resend) {
-    console.log('[Email] ─────────────────────────────────');
-    console.log('[Email] 📧 (SIMULADO) Para:', to);
-    console.log('[Email] 📧 Asunto:', subject);
-    console.log('[Email] ─────────────────────────────────');
+    console.log('[Email] modo log: no se envió ningún correo');
+    console.log('[Email] Para:   ' + to);
+    console.log('[Email] Asunto: ' + subject);
+    console.log(text.split('\n').map(l => '[Email]   ' + l).join('\n'));
     return true;
   }
 
@@ -381,72 +391,79 @@ export async function sendApprovalEmail(to: string, name: string): Promise<boole
 // ─── ALERTA DE STOCK BAJO ────────────────────────────
 // ═══════════════════════════════════════════════════════
 
-export async function sendLowStockAlert(products: LowStockProduct[]): Promise<boolean> {
-  const toEmail = process.env.ALERT_EMAIL ?? 'admin@inventracx.cloud';
+const escHtml = (v: unknown) => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Cantidad sugerida para volver a 2 veces el mínimo. */
+export function suggestedOrder(p: Pick<LowStockProduct, 'stock' | 'minStock'>): number {
+  return Math.max(p.minStock * 2 - p.stock, 1);
+}
+
+/** Construye asunto, HTML y texto del correo de stock bajo (se usa para enviar y para la vista previa). */
+export function renderLowStockAlertEmail(products: LowStockProduct[]): { subject: string; html: string; text: string } {
   const year = new Date().getFullYear();
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+  const out = products.filter(p => p.stock === 0).length;
+  const td = 'padding:10px 14px;border-top:1px solid #eaecf0;font-size:13px;';
 
-  const rows = products
-    .map(p => `
-      <tr>
-        <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03);color:#e2e2f0;font-size:13px;">${p.name}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03);color:#8b8ba3;font-family:monospace;font-size:12px;">${p.sku}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03);color:#ef4444;font-weight:700;font-size:13px;">${p.stock} ${p.unit}</td>
-        <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03);color:#8b8ba3;font-size:13px;">${p.minStock} ${p.unit}</td>
-      </tr>`)
-    .join('');
+  const rows = products.map(p => `
+        <tr>
+          <td style="${td}color:#101828;">${escHtml(p.name)}<div style="font-family:Consolas,monospace;font-size:11px;color:#8a94a6;margin-top:2px;">${escHtml(p.sku)}</div></td>
+          <td style="${td}text-align:right;font-weight:600;color:${p.stock === 0 ? '#c0331f' : '#a65300'};white-space:nowrap;">${p.stock} ${escHtml(p.unit)}</td>
+          <td style="${td}text-align:right;color:#475467;white-space:nowrap;">${p.minStock}</td>
+          <td style="${td}text-align:right;color:#101828;white-space:nowrap;">${suggestedOrder(p)}</td>
+        </tr>`).join('');
 
-  const html = `
-  <!DOCTYPE html>
-  <html lang="es">
-  <head><meta charset="UTF-8"></head>
-  <body style="margin:0;padding:0;background-color:#07000f;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(180deg,#07000f,#0d0520,#07000f);padding:40px 16px;">
-      <tr>
-        <td align="center">
-          <table width="580" cellpadding="0" cellspacing="0" style="background:linear-gradient(160deg,rgba(239,68,68,0.1),rgba(40,10,120,0.08));border-radius:24px;border:1px solid rgba(239,68,68,0.2);overflow:hidden;box-shadow:0 0 80px rgba(239,68,68,0.06),0 32px 64px rgba(0,0,0,0.4);">
-            
-            <tr><td style="height:4px;background:linear-gradient(90deg,#ef4444,#f97316,#eab308,#f97316,#ef4444);"></td></tr>
-
+  const th = 'padding:9px 14px;font-size:11px;font-weight:500;color:#8a94a6;background:#f8f9fb;';
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Alerta de stock bajo</title></head>
+<body style="margin:0;padding:0;background:#f5f6f8;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#101828;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f6f8;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border:1px solid #e4e7ec;border-radius:12px;">
+        <tr><td style="padding:24px 28px 0;">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="width:26px;height:26px;background:#2f54d8;border-radius:7px;color:#ffffff;font-size:14px;font-weight:700;text-align:center;line-height:26px;">I</td>
+            <td style="padding-left:10px;font-size:15px;font-weight:600;color:#101828;">InvenTrack</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:24px 28px 6px;">
+          <div style="display:inline-block;padding:3px 10px;border-radius:99px;background:#fdf2e3;color:#a65300;font-size:12px;font-weight:500;">Alerta de inventario</div>
+          <h1 style="margin:12px 0 6px;font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-0.01em;">${products.length} ${products.length === 1 ? 'producto requiere' : 'productos requieren'} reabastecimiento</h1>
+          <p style="margin:0;font-size:14px;line-height:1.6;color:#475467;">Estos artículos están en o por debajo de su existencia mínima${out ? `; ${out} ${out === 1 ? 'está agotado' : 'están agotados'}` : ''}. La cantidad sugerida lleva cada uno al doble de su mínimo.</p>
+        </td></tr>
+        <tr><td style="padding:16px 28px 0;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eaecf0;border-radius:8px;border-collapse:separate;">
             <tr>
-              <td align="center" style="padding:36px 40px 16px;">
-                <div style="width:56px;height:56px;background:linear-gradient(135deg,#ef4444,#f97316);border-radius:16px;line-height:56px;font-size:24px;text-align:center;box-shadow:0 8px 32px rgba(239,68,68,0.4);">⚠️</div>
-                <h1 style="color:#fca5a5;font-size:22px;font-weight:800;margin:16px 0 4px;">Alerta de Stock Bajo</h1>
-                <p style="color:rgba(200,180,255,0.4);font-size:13px;margin:0;">${products.length} producto(s) requieren atención inmediata</p>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:0 32px;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.04);overflow:hidden;">
-                  <tr style="background:rgba(139,92,246,0.08);">
-                    <th style="padding:12px 16px;text-align:left;color:#c084fc;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Producto</th>
-                    <th style="padding:12px 16px;text-align:left;color:#c084fc;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">SKU</th>
-                    <th style="padding:12px 16px;text-align:left;color:#c084fc;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Stock</th>
-                    <th style="padding:12px 16px;text-align:left;color:#c084fc;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Mínimo</th>
-                  </tr>
-                  ${rows}
-                </table>
-              </td>
-            </tr>
-
-            <tr>
-              <td align="center" style="padding:24px 40px 32px;">
-                <p style="color:rgba(100,80,160,0.4);font-size:10px;margin:0;">InvenTrack — inventracx.cloud — © ${year}</p>
-              </td>
-            </tr>
-
-            <tr><td style="height:4px;background:linear-gradient(90deg,#ef4444,#f97316,#eab308,#f97316,#ef4444);"></td></tr>
+              <th style="${th}text-align:left;border-top-left-radius:8px;">Producto</th>
+              <th style="${th}text-align:right;">Existencia</th>
+              <th style="${th}text-align:right;">Mínimo</th>
+              <th style="${th}text-align:right;border-top-right-radius:8px;">Sugerido</th>
+            </tr>${rows}
           </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-  </html>`;
+        </td></tr>
+        <tr><td style="padding:20px 28px 0;">
+          <a href="${appUrl}/alertas" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#2f54d8;color:#ffffff;font-size:13px;font-weight:500;text-decoration:none;">Revisar en InvenTrack</a>
+        </td></tr>
+        <tr><td style="padding:24px 28px 24px;">
+          <p style="margin:0;padding-top:16px;border-top:1px solid #eaecf0;font-size:12px;color:#8a94a6;">Mensaje automático de InvenTrack, ${year}. Se envía cuando un movimiento deja un producto en o bajo su mínimo.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 
-  const subject = `⚠️ ${products.length} producto(s) con stock bajo — InvenTrack`;
+  const subject = `Stock bajo: ${products.length} ${products.length === 1 ? 'producto requiere' : 'productos requieren'} reabastecimiento`;
+  const text = `Alerta de stock bajo: ${products.length} productos en o bajo su mínimo.\n\n` +
+    products.map(p => `- ${p.name} (${p.sku}): ${p.stock} ${p.unit}, mínimo ${p.minStock}, sugerido ${suggestedOrder(p)}`).join('\n') +
+    `\n\nRevisar: ${appUrl}/alertas`;
 
-  const text = `Alerta de Stock Bajo: ${products.length} productos requieren atención.\n\n` +
-    products.map(p => `- ${p.name} (${p.sku}): ${p.stock} ${p.unit} (Mínimo: ${p.minStock})`).join('\n');
+  return { subject, html, text };
+}
 
-  return sendEmail(toEmail, subject, html, text);
+export async function sendLowStockAlert(products: LowStockProduct[]): Promise<boolean> {
+  const { subject, html, text } = renderLowStockAlertEmail(products);
+  return sendEmail(getAlertRecipient(), subject, html, text);
 }

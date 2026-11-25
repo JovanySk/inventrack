@@ -1,208 +1,118 @@
 ---
 import Layout from '../layouts/Layout.astro';
+const role = Astro.cookies.get('inventrack-role')?.value || 'demo';
+const canEdit = role === 'admin' || role === 'empleado';
 ---
 
-<Layout title="Categorías">
-<style is:global>
-  .page-grid { display: grid; gap: 20px; max-width: 760px; }
+<Layout title="Categorías" subtitle="Organiza el catálogo por familias de producto">
+  <style is:global>
+    .cat-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+    .cat-mark { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent-text); flex-shrink: 0; }
+    .cat-cell { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .share { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    .share-track { width: 80px; height: 4px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+    .share-track span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+    @media (max-width: 900px) { .cat-layout { grid-template-columns: minmax(0, 1fr); } }
+  </style>
 
-  /* ── Form card ── */
-  .form-card {
-    border-radius: 14px;
-    border: 1px solid rgba(150,80,255,0.14);
-    background: rgba(255,255,255,0.025);
-    padding: 20px 22px;
-  }
-  .form-card-title {
-    font-size: 13px; font-weight: 600; color: rgba(180,150,255,0.7);
-    margin-bottom: 14px; letter-spacing: 0.02em;
-  }
-  .form-row { display: flex; gap: 10px; align-items: stretch; }
-  .form-row input {
-    flex: 1; padding: 10px 14px; border-radius: 10px;
-    border: 1.5px solid rgba(150,80,255,0.14);
-    background: rgba(10,5,25,0.6); color: #e2d9f3;
-    font-size: 13px; font-family: 'Inter', sans-serif; outline: none;
-    transition: border-color 0.2s;
-  }
-  .form-row input::placeholder { color: rgba(150,130,200,0.3); }
-  .form-row input:focus { border-color: rgba(168,85,247,0.45); }
-
-  .btn-add {
-    padding: 10px 20px; border: none; border-radius: 10px;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
-    color: #fff; font-size: 13px; font-weight: 600;
-    font-family: 'Inter', sans-serif; cursor: pointer; white-space: nowrap;
-    transition: all 0.2s; box-shadow: 0 4px 16px rgba(168,85,247,0.3);
-  }
-  .btn-add:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(168,85,247,0.45); }
-
-  /* ── List card ── */
-  .list-card {
-    border-radius: 14px;
-    border: 1px solid rgba(150,80,255,0.12);
-    overflow: hidden;
-    background: rgba(255,255,255,0.02);
-  }
-  .list-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px;
-    border-bottom: 1px solid rgba(150,80,255,0.1);
-    background: rgba(150,80,255,0.04);
-  }
-  .list-header-title { font-size: 13px; font-weight: 600; color: rgba(180,150,255,0.7); }
-  .list-count {
-    font-size: 11px; color: rgba(180,150,255,0.4);
-    background: rgba(150,80,255,0.1); border: 1px solid rgba(150,80,255,0.15);
-    padding: 2px 10px; border-radius: 99px;
-  }
-
-  .cat-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px;
-    border-bottom: 1px solid rgba(150,80,255,0.07);
-    transition: background 0.15s;
-  }
-  .cat-row:last-child { border-bottom: none; }
-  .cat-row:hover { background: rgba(150,80,255,0.05); }
-
-  .cat-info { display: flex; align-items: center; gap: 12px; }
-  .cat-initial {
-    width: 36px; height: 36px; border-radius: 10px;
-    background: linear-gradient(135deg, rgba(168,85,247,0.2), rgba(236,72,153,0.15));
-    border: 1px solid rgba(168,85,247,0.2);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700; color: #c084fc; flex-shrink: 0;
-  }
-  .cat-name { font-size: 14px; font-weight: 500; color: #e2d9f3; }
-  .cat-desc { font-size: 11px; color: rgba(180,150,255,0.4); margin-top: 1px; }
-
-  .cat-actions { display: flex; align-items: center; gap: 10px; }
-  .product-count {
-    font-size: 11px; font-weight: 600;
-    padding: 3px 10px; border-radius: 99px;
-    background: rgba(96,165,250,0.1); color: #93c5fd;
-    border: 1px solid rgba(96,165,250,0.18);
-  }
-  .btn-delete {
-    display: flex; align-items: center; gap: 5px;
-    padding: 5px 12px; border-radius: 8px;
-    border: 1px solid rgba(248,113,113,0.18);
-    background: rgba(248,113,113,0.06);
-    color: rgba(248,113,113,0.6);
-    font-size: 11px; font-weight: 500; font-family: 'Inter', sans-serif;
-    cursor: pointer; transition: all 0.2s;
-  }
-  .btn-delete:hover {
-    background: rgba(248,113,113,0.14); color: #f87171;
-    border-color: rgba(248,113,113,0.35);
-  }
-  .btn-delete svg { width: 12px; height: 12px; }
-
-  .empty { text-align: center; padding: 40px; font-size: 13px; color: rgba(180,150,255,0.35); }
-  .msg { font-size: 12px; margin-top: 8px; color: #6ee7b7; }
-  .msg.err { color: #f87171; }
-</style>
-
-  <div class="page-grid">
-
-    <!-- Formulario -->
-    <div class="form-card">
-      <p class="form-card-title">Nueva categoría</p>
-      <div class="form-row">
-        <input id="catName" type="text" placeholder="Nombre de la categoría" />
-        <input id="catDesc" type="text" placeholder="Descripción (opcional)" />
-        <button class="btn-add" onclick="addCategory()">+ Agregar</button>
+  <div class="cat-layout">
+    <div class="card">
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>Categoría</th><th class="r">Productos</th><th class="r"><span class="sr-only">Acciones</span></th></tr>
+          </thead>
+          <tbody id="categoriesList"></tbody>
+        </table>
       </div>
-      <div id="formMsg" class="msg" style="display:none"></div>
+      <div class="card-foot" id="catCount"><span class="skeleton" style="width:100px"></span></div>
     </div>
 
-    <!-- Lista -->
-    <div class="list-card">
-      <div class="list-header">
-        <span class="list-header-title">Categorías existentes</span>
-        <span id="catCount" class="list-count">—</span>
-      </div>
-      <div id="categoriesList">
-        <div class="empty">Cargando...</div>
-      </div>
-    </div>
-
+    {canEdit ? (
+      <form class="card" id="catForm">
+        <div class="card-head"><div><h3 class="card-title">Nueva categoría</h3><p class="card-sub">Aparecerá en filtros y formularios.</p></div></div>
+        <div class="card-body" style="display:grid;gap:14px">
+          <div class="field">
+            <label class="label" for="catName">Nombre</label>
+            <input id="catName" type="text" class="input" placeholder="Ej. Plomería" required />
+          </div>
+          <div class="field">
+            <label class="label" for="catDesc">Descripción</label>
+            <textarea id="catDesc" class="textarea" rows="2" placeholder="Opcional"></textarea>
+          </div>
+          <div id="formMsg" class="notice" style="display:none"></div>
+          <button class="btn btn-primary btn-block" type="submit">Agregar categoría</button>
+        </div>
+      </form>
+    ) : (
+      <div class="card"><div class="card-body"><div class="notice accent">Tu rol es de solo lectura. Pide a un administrador que agregue categorías.</div></div></div>
+    )}
   </div>
 
+  <div id="perm" data-edit={canEdit ? '1' : '0'} hidden></div>
+
   <script>
+    import { esc, toast, icons, stateHtml, skeletonRows } from '@/lib/ui';
+
+    const canEdit = document.getElementById('perm')!.dataset.edit === '1';
+    const list = document.getElementById('categoriesList')!;
+    const countEl = document.getElementById('catCount')!;
+
     async function load() {
-      const res  = await fetch('/api/categories');
-      const data = await res.json();
-
-      const countEl = document.getElementById('catCount')!;
-      const list    = document.getElementById('categoriesList')!;
-      countEl.textContent = `${data.length} categoría${data.length !== 1 ? 's' : ''}`;
-
-      if (data.length === 0) {
-        list.innerHTML = `<div class="empty">Sin categorías. ¡Crea la primera!</div>`;
-        return;
+      list.innerHTML = skeletonRows(3, 6);
+      try {
+        const res = await fetch('/api/categories');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error ' + res.status);
+        const total = data.reduce((s: number, c: any) => s + Number(c.productCount), 0) || 1;
+        countEl.innerHTML = '<span>' + data.length + ' categorías</span><span>' + total + ' productos asignados</span>';
+        if (data.length === 0) {
+          list.innerHTML = '<tr><td colspan="3">' + stateHtml('empty', 'Sin categorías', 'Crea la primera con el formulario.') + '</td></tr>';
+          return;
+        }
+        list.innerHTML = data.map((c: any) => {
+          const n = Number(c.productCount);
+          const words = c.name.split(/\s+/).filter((w: string) => w.length > 2);
+          const initials = (words.length > 1 ? words.map((w: string) => w[0]).join('') : c.name).slice(0, 2).toUpperCase();
+          return '<tr>' +
+            '<td><div class="cat-cell"><span class="cat-mark">' + esc(initials) + '</span><div style="min-width:0"><div class="cell-title">' + esc(c.name) + '</div><div class="cell-sub">' + esc(c.description || 'Sin descripción') + '</div></div></div></td>' +
+            '<td class="r"><span class="share"><span class="share-track hide-sm"><span style="width:' + Math.max(3, (n / total) * 100 * 2.5) + '%"></span></span><span class="num" style="min-width:20px">' + n + '</span></span></td>' +
+            '<td class="r">' + (canEdit ? '<button class="icon-btn danger" data-id="' + c.id + '" data-name="' + esc(c.name) + '" title="Eliminar" aria-label="Eliminar ' + esc(c.name) + '">' + icons.trash + '</button>' : '') + '</td>' +
+          '</tr>';
+        }).join('');
+      } catch (err: any) {
+        list.innerHTML = '<tr><td colspan="3">' + stateHtml('error', 'No se pudieron cargar las categorías', err.message) + '</td></tr>';
       }
-
-      list.innerHTML = data.map((c: any) => `
-        <div class="cat-row">
-          <div class="cat-info">
-            <div class="cat-initial">${c.name.charAt(0).toUpperCase()}</div>
-            <div>
-              <div class="cat-name">${c.name}</div>
-              <div class="cat-desc">${c.description ?? 'Sin descripción'}</div>
-            </div>
-          </div>
-          <div class="cat-actions">
-            <span class="product-count">${c.productCount} producto${c.productCount !== 1 ? 's' : ''}</span>
-            <button class="btn-delete" onclick="deleteCategory(${c.id}, '${c.name.replace(/'/g, "\\'")}')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6m4-6v6"/><path d="M9 6V4h6v2"/></svg>
-              Eliminar
-            </button>
-          </div>
-        </div>`).join('');
     }
 
-    async function addCategory() {
+    list.addEventListener('click', async (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-id]');
+      if (!btn) return;
+      if (!confirm('Eliminar "' + btn.dataset.name + '"? Sus productos quedarán sin categoría.')) return;
+      const res = await fetch('/api/categories?id=' + btn.dataset.id, { method: 'DELETE' });
+      if (res.ok) { toast('Categoría eliminada', 'success'); load(); }
+      else { const d = await res.json(); toast(d.error || 'No se pudo eliminar', 'error'); }
+    });
+
+    document.getElementById('catForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
       const nameEl = document.getElementById('catName') as HTMLInputElement;
-      const descEl = document.getElementById('catDesc') as HTMLInputElement;
-      const msgEl  = document.getElementById('formMsg')!;
-      const name   = nameEl.value.trim();
-      const desc   = descEl.value.trim();
-
-      if (!name) {
-        msgEl.textContent = '✗ El nombre es obligatorio.';
-        msgEl.className = 'msg err';
-        (msgEl as HTMLElement).style.display = 'block';
-        return;
-      }
-
-      const res  = await fetch('/api/categories', {
+      const descEl = document.getElementById('catDesc') as HTMLTextAreaElement;
+      const msg = document.getElementById('formMsg')!;
+      const name = nameEl.value.trim();
+      if (!name) { msg.textContent = 'El nombre es obligatorio.'; msg.className = 'notice danger'; msg.style.display = 'flex'; return; }
+      const res = await fetch('/api/categories', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description: desc || null }),
+        body: JSON.stringify({ name, description: descEl.value.trim() || null }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        msgEl.textContent = '✗ ' + data.error;
-        msgEl.className = 'msg err';
-      } else {
-        msgEl.textContent = '✓ Categoría creada.';
-        msgEl.className = 'msg';
-        nameEl.value = ''; descEl.value = '';
-        await load();
-      }
-      (msgEl as HTMLElement).style.display = 'block';
-      setTimeout(() => { (msgEl as HTMLElement).style.display = 'none'; }, 3000);
-    }
+      if (!res.ok) { msg.textContent = data.error || 'No se pudo crear.'; msg.className = 'notice danger'; msg.style.display = 'flex'; return; }
+      msg.style.display = 'none';
+      nameEl.value = ''; descEl.value = '';
+      toast('Categoría creada', 'success');
+      load();
+    });
 
-    async function deleteCategory(id: number, name: string) {
-      if (!confirm(`¿Eliminar "${name}"?\nLos productos quedarán sin categoría.`)) return;
-      const res = await fetch(`/api/categories?id=${id}`, { method: 'DELETE' });
-      if (res.ok) await load();
-      else { const d = await res.json(); alert(d.error); }
-    }
-
-    Object.assign(window, { addCategory, deleteCategory });
     load();
   </script>
 </Layout>

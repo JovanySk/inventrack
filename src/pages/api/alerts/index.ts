@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
 import { db } from '@/db';
 import { products } from '@/db/schema';
-import { sql } from 'drizzle-orm';
-import { sendLowStockAlert } from '@/lib/email';
+import { sql, and, eq } from 'drizzle-orm';
+import { sendLowStockAlert, getEmailMode, getAlertRecipient } from '@/lib/email';
 
 // POST /api/alerts/check → revisa stock bajo y envía email
 export const POST: APIRoute = async () => {
@@ -10,7 +10,7 @@ export const POST: APIRoute = async () => {
     const lowStock = await db
       .select()
       .from(products)
-      .where(sql`${products.stock} <= ${products.minStock}`);
+      .where(and(eq(products.isActive, true), sql`${products.stock} <= ${products.minStock}`));
 
     if (lowStock.length === 0) {
       return new Response(
@@ -35,9 +35,13 @@ export const POST: APIRoute = async () => {
         ok:      true,
         sent,
         count:   lowStock.length,
-        message: sent
-          ? `Alerta enviada: ${lowStock.length} productos con stock bajo`
-          : 'Productos con stock bajo encontrados (email no configurado)',
+        mode:    getEmailMode(),
+        recipient: getAlertRecipient(),
+        message: !sent
+          ? 'No se pudo enviar la alerta. Revisa la configuración de correo.'
+          : getEmailMode() === 'log'
+            ? `Modo registro: alerta de ${lowStock.length} productos escrita en la consola del servidor. No se envió ningún correo.`
+            : `Alerta enviada a ${getAlertRecipient()}: ${lowStock.length} productos con stock bajo`,
         products: lowStock.map(p => ({ id: p.id, name: p.name, stock: p.stock, minStock: p.minStock })),
       }),
       { headers: { 'Content-Type': 'application/json' } }

@@ -93,7 +93,9 @@ export async function importFromXml(xmlString: string): Promise<XmlProduct[]> {
     const productosRaw = parsed.inventario?.productos;
     if (!productosRaw) throw new Error('Formato XML inválido: no se encontraron productos');
 
-    const lista = productosRaw[0]?.producto;
+    // Con explicitArray:false xml2js devuelve un objeto (no un arreglo)
+    const node: any = Array.isArray(productosRaw) ? productosRaw[0] : productosRaw;
+    const lista = node?.producto;
     if (!lista) throw new Error('No hay productos en el XML');
 
     const arr = Array.isArray(lista) ? lista : [lista];

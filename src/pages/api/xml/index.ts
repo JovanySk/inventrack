@@ -81,7 +81,7 @@ export const POST: APIRoute = async ({ request }) => {
       try {
         const catId = catMap.get((p.categoria ?? '').toLowerCase()) ?? null;
 
-        await db.insert(products).values({
+        const inserted = await db.insert(products).values({
           name:        p.nombre,
           description: p.descripcion || null,
           sku:         p.sku || null,
@@ -91,9 +91,11 @@ export const POST: APIRoute = async ({ request }) => {
           minStock:    parseInt(p.stockMinimo ?? '5'),
           unit:        p.unidad ?? 'pza',
         })
-        .onConflictDoNothing(); // Si el SKU ya existe, ignorar
+        .onConflictDoNothing() // Si el SKU ya existe, ignorar
+        .returning({ id: products.id });
 
-        imported++;
+        if (inserted.length > 0) imported++;
+        else skipped++;
       } catch {
         skipped++;
       }

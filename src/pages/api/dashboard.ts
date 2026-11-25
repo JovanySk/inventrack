@@ -1,22 +1,26 @@
 import type { APIRoute } from 'astro';
 import { db } from '@/db';
 import { products, categories, stockMovements } from '@/db/schema';
-import { eq, sql, count, desc } from 'drizzle-orm';
+import { eq, sql, count, desc, and } from 'drizzle-orm';
 import { getUsdMxnRate } from '@/lib/exchangeRate';
 
 export const GET: APIRoute = async () => {
   try {
-    // ── Estadísticas generales ──────────────────────────────────────
+    const active = eq(products.isActive, true);
+
+    // ── Estadisticas generales (solo productos activos) ─────────────
     const [totals] = await db
       .select({
         totalProducts: count(products.id),
         totalValue:    sql<number>`COALESCE(SUM(${products.price} * ${products.stock}), 0)`,
+        totalUnits:    sql<number>`COALESCE(SUM(${products.stock}), 0)`,
         lowStockCount: sql<number>`COUNT(CASE WHEN ${products.stock} <= ${products.minStock} THEN 1 END)`,
         outOfStock:    sql<number>`COUNT(CASE WHEN ${products.stock} = 0 THEN 1 END)`,
       })
-      .from(products);
+      .from(products)
+      .where(active);
 
-    // ── Productos por categoría ─────────────────────────────────────
+    // ── Productos y valor por categoria ─────────────────────────────
     const byCategory = await db
       .select({
         categoryName: categories.name,
@@ -25,8 +29,9 @@ export const GET: APIRoute = async () => {
       })
       .from(products)
       .leftJoin(categories, eq(products.categoryId, categories.id))
+      .where(active)
       .groupBy(categories.name)
-      .orderBy(desc(count(products.id)));
+      .orderBy(desc(sql`COALESCE(SUM(${products.price} * ${products.stock}), 0)`));
 
     // ── Productos con stock bajo ────────────────────────────────────
     const lowStock = await db
@@ -39,10 +44,10 @@ export const GET: APIRoute = async () => {
         unit:     products.unit,
       })
       .from(products)
-      .where(sql`${products.stock} <= ${products.minStock}`)
-      .orderBy(products.stock);
+      .where(and(active, sql`${products.stock} <= ${products.minStock}`))
+      .orderBy(sql`${products.stock}::float / NULLIF(${products.minStock}, 0)`, products.name);
 
-    // ── Últimos movimientos ─────────────────────────────────────────
+    // ── Ultimos movimientos ─────────────────────────────────────────
     const recentMovements = await db
       .select({
         id:          stockMovements.id,
@@ -58,15 +63,38 @@ export const GET: APIRoute = async () => {
       .orderBy(desc(stockMovements.createdAt))
       .limit(10);
 
+    // ── Serie diaria de los ultimos 30 dias (unidades) ──────────────
+    const daily = await db.execute(sql`
+      SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+             COALESCE(SUM(CASE WHEN m.tipo = 'entrada' THEN m.cantidad END), 0)::int AS entradas,
+             COALESCE(SUM(CASE WHEN m.tipo = 'salida'  THEN m.cantidad END), 0)::int AS salidas,
+             COUNT(m.id)::int AS movimientos
+      FROM generate_series(CURRENT_DATE - INTERVAL '29 days', CURRENT_DATE, INTERVAL '1 day') AS d(day)
+      LEFT JOIN movimientos_inventario m
+        ON m.fecha_creacion >= d.day AND m.fecha_creacion < d.day + INTERVAL '1 day'
+      GROUP BY d.day
+      ORDER BY d.day
+    `);
+
+    const dailyRows = (daily as unknown as Array<{ day: string; entradas: number; salidas: number; movimientos: number }>)
+      .map(r => ({ day: r.day, entradas: Number(r.entradas), salidas: Number(r.salidas), movimientos: Number(r.movimientos) }));
+    const last30 = dailyRows.reduce(
+      (acc, r) => ({ entradas: acc.entradas + r.entradas, salidas: acc.salidas + r.salidas, movimientos: acc.movimientos + r.movimientos }),
+      { entradas: 0, salidas: 0, movimientos: 0 },
+    );
+
     // ── Tipo de cambio USD/MXN ──────────────────────────────────────
     const exchangeRate = await getUsdMxnRate();
 
     return new Response(
       JSON.stringify({
         totals: {
-          ...totals,
-          totalValue:     Number(totals.totalValue),
-          totalValueUsd:  exchangeRate ? (Number(totals.totalValue) / exchangeRate).toFixed(2) : null,
+          totalProducts: Number(totals.totalProducts),
+          totalUnits:    Number(totals.totalUnits),
+          lowStockCount: Number(totals.lowStockCount),
+          outOfStock:    Number(totals.outOfStock),
+          totalValue:    Number(totals.totalValue),
+          totalValueUsd: exchangeRate ? (Number(totals.totalValue) / exchangeRate).toFixed(2) : null,
           exchangeRate,
         },
         byCategory: byCategory.map(c => ({
@@ -76,6 +104,8 @@ export const GET: APIRoute = async () => {
         })),
         lowStock,
         recentMovements,
+        daily: dailyRows,
+        last30,
       }),
       { headers: { 'Content-Type': 'application/json' } }
     );

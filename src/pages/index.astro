@@ -2,454 +2,327 @@
 import Layout from '../layouts/Layout.astro';
 ---
 
-<Layout title="Dashboard">
-<style is:global>
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
-  @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+<Layout title="Resumen" subtitle="Estado del inventario y actividad de los últimos 30 días">
+  <style is:global>
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi { padding: 16px; }
+    .kpi-label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); font-weight: 500; }
+    .kpi-label svg { width: 15px; height: 15px; color: var(--text-3); }
+    .kpi-value { margin-top: 10px; font-size: 26px; font-weight: 650; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .kpi-value small { font-size: 14px; font-weight: 500; color: var(--text-3); margin-left: 4px; letter-spacing: 0; }
+    .kpi-foot { margin-top: 6px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+    .kpi-foot b { font-weight: 600; color: var(--text-2); }
+    .kpi.warn .kpi-value { color: var(--warning); }
 
-  .kpi-card {
-    border-radius: 14px; padding: 18px 20px;
-    border: 1px solid; transition: transform 0.2s;
-    cursor: default;
-  }
-  .kpi-card:hover { transform: translateY(-2px); }
-  .kpi-label { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.5; margin-bottom: 10px; }
-  .kpi-row { display: flex; align-items: flex-end; gap: 10px; }
-  .kpi-icon { font-size: 22px; line-height: 1; }
-  .kpi-value { font-size: 26px; font-weight: 900; line-height: 1; letter-spacing: -0.5px; }
-  .kpi-sub { font-size: 10px; margin-top: 6px; opacity: 0.45; }
+    .grid-a { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+    .grid-b { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .chart-box { position: relative; height: 240px; }
+    .chart-box.sm { height: 168px; }
+    .card.fill { display: flex; flex-direction: column; }
+    .card.fill > .card-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+    .card.fill .chart-box.grow { flex: 1; height: auto; min-height: 168px; }
+    .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); }
+    .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 
-  .kpi-pink  { background: rgba(236,72,153,0.07);  border-color: rgba(236,72,153,0.15);  color: #f472b6; }
-  .kpi-cyan  { background: rgba(6,182,212,0.07);   border-color: rgba(6,182,212,0.15);   color: #22d3ee; }
-  .kpi-amber { background: rgba(245,158,11,0.07);  border-color: rgba(245,158,11,0.15);  color: #fbbf24; }
-  .kpi-red   { background: rgba(239,68,68,0.07);   border-color: rgba(239,68,68,0.15);   color: #f87171; }
+    .low-list { list-style: none; margin: 0; padding: 4px 0; }
+    .low-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 9px 16px; }
+    .low-item + .low-item { border-top: 1px solid var(--border); }
+    .low-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .low-sku { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
+    .low-qty { text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .low-min { font-size: 11.5px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+    .low-bar { grid-column: 1 / -1; height: 3px; background: var(--surface-3); border-radius: 99px; overflow: hidden; }
+    .low-bar span { display: block; height: 100%; background: var(--warning); border-radius: 99px; }
+    .low-bar span.out { background: var(--danger); }
 
-  .exch-bar {
-    display: flex; align-items: center; gap: 10px;
-    padding: 11px 18px; border-radius: 12px; margin-bottom: 22px;
-    background: rgba(6,182,212,0.05); border: 1px solid rgba(6,182,212,0.12);
-    font-size: 12px; color: rgba(180,150,255,0.5);
-  }
-  .exch-bar strong { color: #22d3ee; font-family: monospace; font-size: 13px; }
-  .exch-src { margin-left: auto; font-size: 10px; }
+    .donut-wrap { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 16px; align-items: center; }
+    .donut-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: 12px; }
+    .donut-legend li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .donut-legend .sw { width: 10px; height: 10px; border-radius: 3px; }
+    .donut-legend .nm { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .donut-legend .pc { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 500; }
 
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+    .feed { list-style: none; margin: 0; padding: 4px 0; }
+    .feed li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 16px; }
+    .feed-ic { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: var(--surface-3); color: var(--text-2); }
+    .feed-ic svg { width: 14px; height: 14px; }
+    .feed-ic.in { background: var(--success-soft); color: var(--success); }
+    .feed-ic.adj { background: var(--accent-soft); color: var(--accent-text); }
+    .feed-name { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .feed-sub { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .feed-qty { font-size: 12.5px; text-align: right; }
 
-  .panel {
-    border-radius: 14px; border: 1px solid rgba(150,80,255,0.12);
-    background: rgba(255,255,255,0.02); overflow: hidden;
-  }
-  .panel-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px; border-bottom: 1px solid rgba(150,80,255,0.08);
-  }
-  .panel-title { font-size: 14px; font-weight: 700; color: #e2d9f3; }
-  .panel-body { padding: 16px 18px; }
+    .fx { font-size: 12px; color: var(--text-3); }
 
-  .stock-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 12px; border-radius: 10px; margin-bottom: 6px;
-    background: rgba(255,255,255,0.02); border: 1px solid rgba(150,80,255,0.07);
-    transition: background 0.15s;
-  }
-  .stock-item:hover { background: rgba(150,80,255,0.06); }
-  .stock-item:last-child { margin-bottom: 0; }
-  .stock-name { font-size: 13px; font-weight: 500; color: #e2d9f3; }
-  .stock-sku  { font-size: 10px; font-family: monospace; color: rgba(180,150,255,0.4); margin-top: 1px; }
-  .stock-qty  { text-align: right; }
-  .stock-num  { font-size: 14px; font-weight: 700; }
-  .stock-min  { font-size: 10px; color: rgba(180,150,255,0.35); }
-  .no-issues { text-align: center; padding: 30px; font-size: 13px; color: rgba(180,150,255,0.35); }
+    @media (max-width: 1180px) {
+      .grid-b { grid-template-columns: 1fr 1fr; }
+      .grid-b > :last-child { grid-column: 1 / -1; }
+    }
+    @media (max-width: 900px) {
+      .kpis { grid-template-columns: 1fr 1fr; }
+      .grid-a, .grid-b { grid-template-columns: minmax(0, 1fr); }
+      .grid-b > :last-child { grid-column: auto; }
+      .kpi-value { font-size: 22px; }
+    }
+  </style>
 
-  .badge-alert {
-    font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 99px;
-    background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2);
-  }
-  .see-all { font-size: 11px; font-weight: 600; color: rgba(168,85,247,0.7); text-decoration: none; transition: color 0.2s; }
-  .see-all:hover { color: #ec4899; }
-
-  .mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .mini-table thead th {
-    text-align: left; padding: 7px 10px;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-    color: rgba(180,150,255,0.35); border-bottom: 1px solid rgba(150,80,255,0.08);
-  }
-  .mini-table tbody td { padding: 9px 10px; border-bottom: 1px solid rgba(150,80,255,0.05); color: rgba(180,150,255,0.7); }
-  .mini-table tbody tr:last-child td { border-bottom: none; }
-  .mini-table tbody tr:hover td { background: rgba(150,80,255,0.04); }
-
-  .badge-e { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:rgba(16,185,129,0.12);color:#34d399;border:1px solid rgba(16,185,129,0.2); }
-  .badge-s { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:rgba(248,113,113,0.12);color:#f87171;border:1px solid rgba(248,113,113,0.2); }
-  .badge-a { display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:rgba(96,165,250,0.12);color:#93c5fd;border:1px solid rgba(96,165,250,0.2); }
-
-  .qty-in  { color:#34d399; font-weight:700; font-family:monospace; }
-  .qty-out { color:#f87171; font-weight:700; font-family:monospace; }
-
-  .btn-alert {
-    width: 100%; margin-top: 14px; padding: 9px; border-radius: 10px; border: none;
-    background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.2);
-    color: rgba(168,85,247,0.8); font-size: 12px; font-family: 'Inter', sans-serif; font-weight: 600;
-    cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-  }
-  .btn-alert:hover { background: rgba(168,85,247,0.18); color: #e2d9f3; }
-  .btn-alert svg { width: 13px; height: 13px; }
-
-  .spin { display:flex; align-items:center; justify-content:center; height:200px; gap:12px; color:rgba(180,150,255,0.4); font-size:13px; }
-  .spinner-ring {
-    width: 28px; height: 28px; border-radius: 50%;
-    border: 2px solid rgba(150,80,255,0.15);
-    border-top-color: #a855f7;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .chart-canvas-wrap { position: relative; width: 100%; min-height: 220px; }
-  .chart-canvas-wrap canvas { width: 100% !important; }
-</style>
-
-  <div id="dash">
-    <div class="spin">
-      <div class="spinner-ring"></div>
-      Cargando...
+  <div id="dash" aria-busy="true">
+    <div class="kpis">
+      {[1, 2, 3, 4].map(() => (
+        <div class="card kpi"><span class="skeleton" style="width:50%"></span><span class="skeleton" style="width:70%;height:24px;margin-top:14px"></span></div>
+      ))}
+    </div>
+    <div class="grid-a">
+      <div class="card" style="height:310px"></div>
+      <div class="card" style="height:310px"></div>
     </div>
   </div>
 
-  <!-- Cargar Chart.js PRIMERO -->
-  <script is:inline src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <template id="tpl">
+    <div class="kpis">
+      <div class="card kpi">
+        <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Valor del inventario</div>
+        <div class="kpi-value" data-k="value"></div>
+        <div class="kpi-foot" data-k="valueFoot"></div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8m18 0v8l-9 5m9-13-9 5m0 8V13m0 8-9-5V8l9 5"/></svg>Productos activos</div>
+        <div class="kpi-value" data-k="products"></div>
+        <div class="kpi-foot" data-k="productsFoot"></div>
+      </div>
+      <div class="card kpi" data-k="lowCard">
+        <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Bajo el mínimo</div>
+        <div class="kpi-value" data-k="low"></div>
+        <div class="kpi-foot" data-k="lowFoot"></div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4 3 8m4-4 4 4m6 12V4m0 16 4-4m-4 4-4-4"/></svg>Movimientos, 30 días</div>
+        <div class="kpi-value" data-k="moves"></div>
+        <div class="kpi-foot" data-k="movesFoot"></div>
+      </div>
+    </div>
 
-  <script is:inline>
-    var _dashData = null;
+    <div class="grid-a">
+      <section class="card fill">
+        <div class="card-head plain">
+          <div>
+            <h3 class="card-title">Entradas y salidas</h3>
+            <p class="card-sub">Unidades por día, últimos 30 días</p>
+          </div>
+          <div class="legend"><span><i style="background:var(--chart-1)"></i>Entradas</span><span><i style="background:var(--chart-2)"></i>Salidas</span></div>
+        </div>
+        <div class="card-body" style="padding-top:8px"><div class="chart-box grow"><canvas id="chartTrend" aria-label="Entradas y salidas por día" role="img"></canvas></div></div>
+      </section>
 
-    async function loadDashboard() {
-      var root = document.getElementById('dash');
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h3 class="card-title">Stock bajo</h3>
+            <p class="card-sub" data-k="lowSub"></p>
+          </div>
+          <a href="/alertas" class="link">Ver alertas</a>
+        </div>
+        <div data-k="lowList"></div>
+      </section>
+    </div>
+
+    <div class="grid-b">
+      <section class="card fill">
+        <div class="card-head plain">
+          <div>
+            <h3 class="card-title">Valor por categoría</h3>
+            <p class="card-sub">Participación en el valor total</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="donut-wrap">
+            <div class="chart-box sm" style="height:132px"><canvas id="chartDonut" aria-label="Valor por categoría" role="img"></canvas></div>
+            <ul class="donut-legend" data-k="donutLegend"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card fill">
+        <div class="card-head plain">
+          <div>
+            <h3 class="card-title">Productos por categoría</h3>
+            <p class="card-sub">Número de artículos activos</p>
+          </div>
+        </div>
+        <div class="card-body" style="padding-top:8px"><div class="chart-box sm grow"><canvas id="chartCat" aria-label="Productos por categoría" role="img"></canvas></div></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h3 class="card-title">Actividad reciente</h3>
+            <p class="card-sub">Últimos movimientos registrados</p>
+          </div>
+          <a href="/movimientos" class="link">Ver todo</a>
+        </div>
+        <ul class="feed" data-k="feed"></ul>
+      </section>
+    </div>
+  </template>
+
+  <script>
+    import Chart from 'chart.js/auto';
+    import { esc, money, int, dateTime, stateHtml } from '@/lib/ui';
+
+    const ICON_IN  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>';
+    const ICON_OUT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14m6-6-6 6-6-6"/></svg>';
+    const ICON_ADJ = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M12 4v16"/></svg>';
+
+    const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+    async function load() {
+      const root = document.getElementById('dash')!;
       try {
-        var res  = await fetch('/api/dashboard');
-        var data = await res.json();
-        if (data.error) throw new Error(data.error);
-        _dashData = data;
-        var totals = data.totals;
-        var byCategory = data.byCategory;
-        var lowStock = data.lowStock;
-        var recentMovements = data.recentMovements;
-
-        function fmx(n) { return '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2 }); }
-
-        // KPIs
-        var h = '<div class="kpi-grid">';
-        h += kpi('📦','Total Productos', totals.totalProducts, 'pink', '');
-        h += kpi('💰','Valor Inventario', fmx(totals.totalValue), 'cyan',
-          totals.exchangeRate ? '≈ $' + Number(totals.totalValueUsd).toLocaleString('en-US') + ' USD' : '');
-        h += kpi('⚠️','Stock Bajo', totals.lowStockCount, 'amber', '');
-        h += kpi('🚫','Sin Stock', totals.outOfStock, 'red', '');
-        h += '</div>';
-
-        // Exchange rate
-        if (totals.exchangeRate) {
-          h += '<div class="exch-bar">';
-          h += '<span>🌐</span>';
-          h += '<span>Tipo de cambio en tiempo real</span>';
-          h += '<strong>$1 USD = $' + totals.exchangeRate.toFixed(2) + ' MXN</strong>';
-          h += '<span class="exch-src">via open.er-api.com</span>';
-          h += '</div>';
-        }
-
-        // === ROW 1: Bar Chart + Low Stock ===
-        h += '<div class="two-col">';
-
-        // Bar chart panel
-        h += '<div class="panel">';
-        h += '<div class="panel-head">';
-        h += '<span class="panel-title">Productos por Categoría</span>';
-        h += '<span style="font-size:11px;color:rgba(180,150,255,0.4)">' + byCategory.length + ' categorías</span>';
-        h += '</div>';
-        h += '<div class="panel-body"><div class="chart-canvas-wrap"><canvas id="chartCat"></canvas></div></div>';
-        h += '</div>';
-
-        // Low stock panel
-        h += '<div class="panel">';
-        h += '<div class="panel-head">';
-        h += '<span class="panel-title">Stock Bajo</span>';
-        h += '<span class="badge-alert">' + lowStock.length + ' alerta' + (lowStock.length !== 1 ? 's' : '') + '</span>';
-        h += '</div>';
-        h += '<div class="panel-body">';
-        if (lowStock.length === 0) {
-          h += '<div class="no-issues">✅ Todo en orden</div>';
-        } else {
-          for (var i = 0; i < lowStock.length; i++) {
-            var p = lowStock[i];
-            var c = p.stock === 0 ? '#f87171' : '#fbbf24';
-            h += '<div class="stock-item">';
-            h += '<div><div class="stock-name">' + p.name + '</div><div class="stock-sku">' + (p.sku || 'Sin SKU') + '</div></div>';
-            h += '<div class="stock-qty">';
-            h += '<div class="stock-num" style="color:' + c + '">' + p.stock + ' ' + p.unit + '</div>';
-            h += '<div class="stock-min">mín: ' + p.minStock + '</div>';
-            h += '</div></div>';
-          }
-          h += '<button class="btn-alert" onclick="checkAlerts()">';
-          h += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>';
-          h += 'Enviar alerta por email</button>';
-        }
-        h += '</div></div>';
-        h += '</div>'; // close two-col
-
-        // === ROW 2: Donut Chart + Line Chart ===
-        h += '<div class="two-col">';
-
-        // Donut chart
-        h += '<div class="panel">';
-        h += '<div class="panel-head">';
-        h += '<span class="panel-title">Distribución de Valor</span>';
-        h += '<span style="font-size:11px;color:rgba(180,150,255,0.4)">Valor total</span>';
-        h += '</div>';
-        h += '<div class="panel-body"><div class="chart-canvas-wrap"><canvas id="chartDonut"></canvas></div></div>';
-        h += '</div>';
-
-        // Line chart
-        h += '<div class="panel">';
-        h += '<div class="panel-head">';
-        h += '<span class="panel-title">Tendencia de Movimientos</span>';
-        h += '<span style="font-size:11px;color:rgba(180,150,255,0.4)">Últimos registros</span>';
-        h += '</div>';
-        h += '<div class="panel-body"><div class="chart-canvas-wrap"><canvas id="chartTrend"></canvas></div></div>';
-        h += '</div>';
-
-        h += '</div>'; // close two-col
-
-        // === Recent movements table ===
-        h += '<div class="panel">';
-        h += '<div class="panel-head">';
-        h += '<span class="panel-title">Últimos Movimientos</span>';
-        h += '<a href="/movimientos" class="see-all">Ver todos →</a>';
-        h += '</div>';
-        h += '<div style="overflow-x:auto">';
-        h += '<table class="mini-table"><thead><tr>';
-        h += '<th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Stock</th><th>Razón</th><th>Fecha</th>';
-        h += '</tr></thead><tbody>';
-
-        for (var j = 0; j < recentMovements.length; j++) {
-          var m = recentMovements[j];
-          var badge = m.type === 'entrada'
-            ? '<span class="badge-e">↑ Entrada</span>'
-            : m.type === 'salida'
-            ? '<span class="badge-s">↓ Salida</span>'
-            : '<span class="badge-a">⊙ Ajuste</span>';
-          var qty = '<span class="' + (m.type === 'salida' ? 'qty-out' : 'qty-in') + '">' + (m.type === 'salida' ? '−' : '+') + m.quantity + '</span>';
-          h += '<tr>';
-          h += '<td style="color:#e2d9f3;font-weight:500">' + (m.productName || '—') + '</td>';
-          h += '<td>' + badge + '</td>';
-          h += '<td>' + qty + '</td>';
-          h += '<td style="font-family:monospace;font-weight:600;color:#e2d9f3">' + m.newStock + '</td>';
-          h += '<td>' + (m.reason || '—') + '</td>';
-          h += '<td style="font-size:10px;white-space:nowrap">' + new Date(m.createdAt).toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'}) + '</td>';
-          h += '</tr>';
-        }
-
-        h += '</tbody></table></div></div>';
-
-        root.innerHTML = h;
-
-        // Esperar un frame para que el DOM se renderice y luego crear charts
-        setTimeout(function() { createCharts(data); }, 100);
-
-      } catch (err) {
-        root.innerHTML =
-          '<div style="text-align:center;padding:60px;color:rgba(180,150,255,0.4)">' +
-          '<p style="font-size:32px;margin-bottom:10px">💥</p>' +
-          '<p style="font-weight:700;color:#f87171">Error cargando dashboard</p>' +
-          '<p style="font-size:12px;margin-top:6px">' + err.message + '</p></div>';
+        const res = await fetch('/api/dashboard');
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Respuesta inválida del servidor');
+        render(root, data);
+      } catch (err: any) {
+        root.innerHTML = '<div class="card">' + stateHtml('error', 'No se pudo cargar el resumen', err.message) +
+          '<div style="text-align:center;padding-bottom:24px"><button class="btn btn-secondary" id="retry">Reintentar</button></div></div>';
+        document.getElementById('retry')?.addEventListener('click', () => location.reload());
+      } finally {
+        root.setAttribute('aria-busy', 'false');
       }
     }
 
-    function createCharts(data) {
-      if (typeof Chart === 'undefined') {
-        console.warn('[Dashboard] Chart.js no disponible, reintentando...');
-        setTimeout(function() { createCharts(data); }, 500);
-        return;
+    function render(root: HTMLElement, data: any) {
+      const tpl = document.getElementById('tpl') as HTMLTemplateElement;
+      root.innerHTML = '';
+      root.appendChild(tpl.content.cloneNode(true));
+      const k = (name: string) => root.querySelector('[data-k="' + name + '"]') as HTMLElement;
+      const t = data.totals;
+
+      const whole = Math.round(t.totalValue);
+      k('value').innerHTML = esc(money(whole).replace(/\.00$/, '')) + '<small>MXN</small>';
+      k('valueFoot').innerHTML = t.exchangeRate
+        ? 'Aprox. <b>' + esc(Number(t.totalValueUsd).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })) + '</b> a ' + esc(Number(t.exchangeRate).toFixed(2)) + ' MXN por USD'
+        : 'Tipo de cambio no disponible';
+      k('products').textContent = int(t.totalProducts);
+      k('productsFoot').innerHTML = '<b>' + int(t.totalUnits) + '</b> unidades en ' + data.byCategory.length + ' categorías';
+      k('low').textContent = int(t.lowStockCount);
+      k('lowFoot').innerHTML = t.outOfStock > 0 ? '<b>' + t.outOfStock + '</b> sin existencia' : 'Ninguno sin existencia';
+      if (t.lowStockCount > 0) k('lowCard').classList.add('warn');
+      k('moves').textContent = int(data.last30.movimientos);
+      k('movesFoot').innerHTML = '<b>' + int(data.last30.entradas) + '</b> unidades entraron, <b>' + int(data.last30.salidas) + '</b> salieron';
+
+      // Low stock list
+      const low = data.lowStock as any[];
+      k('lowSub').textContent = low.length ? low.length + ' productos requieren reabastecimiento' : 'Todo dentro del rango';
+      if (low.length === 0) {
+        k('lowList').innerHTML = '<div class="state" style="padding:40px 16px"><div class="state-icon success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div><div class="state-title">Sin alertas</div><div class="state-text">Todos los productos están por encima de su mínimo.</div></div>';
+      } else {
+        k('lowList').innerHTML = '<ul class="low-list">' + low.slice(0, 5).map(p => {
+          const pct = Math.min(100, (p.stock / Math.max(1, p.minStock)) * 100);
+          return '<li class="low-item">' +
+            '<div style="min-width:0"><div class="low-name">' + esc(p.name) + '</div><div class="low-sku">' + esc(p.sku || 'Sin SKU') + '</div></div>' +
+            '<div><div class="low-qty" style="color:' + (p.stock === 0 ? 'var(--danger)' : 'var(--warning)') + '">' + p.stock + ' ' + esc(p.unit) + '</div><div class="low-min">mín. ' + p.minStock + '</div></div>' +
+            '<div class="low-bar" title="' + Math.round(pct) + '% del mínimo"><span style="width:' + pct + '%"></span></div>' +
+          '</li>';
+        }).join('') + '</ul>' +
+        (low.length > 5 ? '<div class="card-foot"><span>' + (low.length - 5) + ' más</span><a class="link" href="/alertas">Ver todos</a></div>' : '');
       }
 
-      var byCategory = data.byCategory;
-      var recentMovements = data.recentMovements;
+      // Feed
+      const feed = (data.recentMovements as any[]).slice(0, 5);
+      k('feed').innerHTML = feed.length === 0
+        ? '<li style="display:block">' + stateHtml('empty', 'Sin movimientos', 'Registra una entrada o salida desde Productos.') + '</li>'
+        : feed.map(m => {
+          const cls = m.type === 'entrada' ? 'in' : m.type === 'ajuste' ? 'adj' : '';
+          const ic = m.type === 'entrada' ? ICON_IN : m.type === 'ajuste' ? ICON_ADJ : ICON_OUT;
+          const qty = m.type === 'entrada' ? '<span class="qty-in">+' + m.quantity + '</span>'
+            : m.type === 'ajuste' ? '<span class="qty-adj">=' + m.quantity + '</span>'
+            : '<span class="qty-out">-' + m.quantity + '</span>';
+          return '<li><span class="feed-ic ' + cls + '">' + ic + '</span>' +
+            '<div style="min-width:0"><div class="feed-name">' + esc(m.productName || 'Producto eliminado') + '</div><div class="feed-sub">' + esc(m.reason || m.type) + ' · ' + esc(dateTime(m.createdAt)) + '</div></div>' +
+            '<div class="feed-qty">' + qty + '</div></li>';
+        }).join('');
 
-      var colors = [
-        { bg:'rgba(236,72,153,0.45)',  border:'#ec4899' },
-        { bg:'rgba(6,182,212,0.45)',   border:'#06b6d4' },
-        { bg:'rgba(16,185,129,0.45)',  border:'#10b981' },
-        { bg:'rgba(245,158,11,0.45)',  border:'#f59e0b' },
-        { bg:'rgba(139,92,246,0.45)',  border:'#8b5cf6' },
-        { bg:'rgba(244,63,94,0.45)',   border:'#f43f5e' },
-        { bg:'rgba(99,102,241,0.45)',  border:'#6366f1' },
-        { bg:'rgba(20,184,166,0.45)',  border:'#14b8a6' },
-      ];
-
-      // ═══ CHART 1: Bar - Productos por Categoría ═══
-      var catCanvas = document.getElementById('chartCat');
-      if (catCanvas) {
-        new Chart(catCanvas.getContext('2d'), {
-          type: 'bar',
-          data: {
-            labels: byCategory.map(function(c) { return c.categoryName || 'Sin categoría'; }),
-            datasets: [{
-              label: 'Productos',
-              data: byCategory.map(function(c) { return c.count; }),
-              backgroundColor: colors.map(function(c) { return c.bg; }),
-              borderColor: colors.map(function(c) { return c.border; }),
-              borderWidth: 2, borderRadius: 8, borderSkipped: false,
-            }],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-              y: { beginAtZero: true, ticks: { stepSize: 1, color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
-              x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
-            },
-          },
-        });
-        console.log('[Dashboard] ✅ Gráfica de barras creada');
-      }
-
-      // ═══ CHART 2: Donut - Distribución de Valor ═══
-      var donutCanvas = document.getElementById('chartDonut');
-      if (donutCanvas && byCategory.length > 0) {
-        var donutLabels = [];
-        var donutData = [];
-        var donutColors = [];
-        var donutBorders = [];
-
-        for (var i = 0; i < byCategory.length; i++) {
-          var cat = byCategory[i];
-          var val = parseFloat(cat.totalValue) || (cat.count * 100);
-          donutLabels.push(cat.categoryName || 'Sin categoría');
-          donutData.push(val);
-          donutColors.push(colors[i % colors.length].bg);
-          donutBorders.push(colors[i % colors.length].border);
-        }
-
-        new Chart(donutCanvas.getContext('2d'), {
-          type: 'doughnut',
-          data: {
-            labels: donutLabels,
-            datasets: [{
-              data: donutData,
-              backgroundColor: donutColors,
-              borderColor: donutBorders,
-              borderWidth: 2,
-              hoverOffset: 8,
-            }],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '60%',
-            plugins: {
-              legend: {
-                position: 'bottom',
-                labels: { color: 'rgba(180,150,255,0.6)', padding: 12, font: { size: 11 }, usePointStyle: true, pointStyleWidth: 8 }
-              },
-            },
-          },
-        });
-        console.log('[Dashboard] ✅ Gráfica de dona creada');
-      }
-
-      // ═══ CHART 3: Line - Tendencia de Movimientos ═══
-      var trendCanvas = document.getElementById('chartTrend');
-      if (trendCanvas && recentMovements.length > 0) {
-        var trendLabels = [];
-        var trendEntradas = [];
-        var trendSalidas = [];
-
-        // Agrupar movimientos por fecha
-        var grouped = {};
-        for (var k = recentMovements.length - 1; k >= 0; k--) {
-          var mv = recentMovements[k];
-          var dateKey = new Date(mv.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
-          if (!grouped[dateKey]) { grouped[dateKey] = { entradas: 0, salidas: 0 }; }
-          if (mv.type === 'entrada') { grouped[dateKey].entradas += mv.quantity; }
-          else if (mv.type === 'salida') { grouped[dateKey].salidas += mv.quantity; }
-        }
-
-        var keys = Object.keys(grouped);
-        for (var g = 0; g < keys.length; g++) {
-          trendLabels.push(keys[g]);
-          trendEntradas.push(grouped[keys[g]].entradas);
-          trendSalidas.push(grouped[keys[g]].salidas);
-        }
-
-        new Chart(trendCanvas.getContext('2d'), {
-          type: 'line',
-          data: {
-            labels: trendLabels,
-            datasets: [
-              {
-                label: 'Entradas',
-                data: trendEntradas,
-                borderColor: '#34d399',
-                backgroundColor: 'rgba(52,211,153,0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#34d399',
-                pointRadius: 4,
-              },
-              {
-                label: 'Salidas',
-                data: trendSalidas,
-                borderColor: '#f87171',
-                backgroundColor: 'rgba(248,113,113,0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#f87171',
-                pointRadius: 4,
-              }
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                position: 'bottom',
-                labels: { color: 'rgba(180,150,255,0.6)', padding: 12, font: { size: 11 }, usePointStyle: true }
-              },
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { color: 'rgba(180,150,255,0.35)' }, grid: { color: 'rgba(150,80,255,0.06)' }, border: { display: false } },
-              x: { ticks: { color: 'rgba(180,150,255,0.5)' }, grid: { display: false }, border: { display: false } },
-            },
-          },
-        });
-        console.log('[Dashboard] ✅ Gráfica de tendencia creada');
-      }
+      drawCharts(data, k);
     }
 
-    function kpi(icon, label, value, color, sub) {
-      return '<div class="kpi-card kpi-' + color + '">' +
-        '<p class="kpi-label">' + label + '</p>' +
-        '<div class="kpi-row"><span class="kpi-icon">' + icon + '</span><span class="kpi-value">' + value + '</span></div>' +
-        (sub ? '<p class="kpi-sub">' + sub + '</p>' : '') +
-      '</div>';
+    function drawCharts(data: any, k: (n: string) => HTMLElement) {
+      const grid = css('--chart-grid');
+      const tick = css('--chart-tick');
+      const palette = [1, 2, 3, 4, 5, 6, 7].map(i => css('--chart-' + i));
+      const font = { family: css('--font-sans'), size: 11 };
+      Chart.defaults.font = font as any;
+      Chart.defaults.color = tick;
+
+      const tooltip = {
+        backgroundColor: css('--text'), titleColor: css('--bg'), bodyColor: css('--bg'),
+        padding: 10, cornerRadius: 6, displayColors: true, boxWidth: 8, boxHeight: 8, boxPadding: 4,
+        titleFont: { ...font, weight: 600 } as any, bodyFont: font as any,
+      };
+
+      // 1. Trend
+      const daily = data.daily as any[];
+      const labels = daily.map(d => {
+        const [y, m, dd] = d.day.split('-').map(Number);
+        return new Date(y, m - 1, dd).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }).replace('.', '');
+      });
+      new Chart(document.getElementById('chartTrend') as HTMLCanvasElement, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Entradas', data: daily.map(d => d.entradas), backgroundColor: palette[0], borderRadius: 3, maxBarThickness: 10, categoryPercentage: 0.7, barPercentage: 0.9 },
+            { label: 'Salidas',  data: daily.map(d => d.salidas),  backgroundColor: palette[1], borderRadius: 3, maxBarThickness: 10, categoryPercentage: 0.7, barPercentage: 0.9 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (c: any) => ' ' + c.dataset.label + ': ' + int(c.parsed.y) + ' u.' } } },
+          scales: {
+            x: { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+            y: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { maxTicksLimit: 5, precision: 0 } },
+          },
+        },
+      });
+
+      // 2. Donut: value per category
+      const cats = data.byCategory as any[];
+      const total = cats.reduce((s, c) => s + c.value, 0) || 1;
+      new Chart(document.getElementById('chartDonut') as HTMLCanvasElement, {
+        type: 'doughnut',
+        data: {
+          labels: cats.map(c => c.categoryName || 'Sin categoría'),
+          datasets: [{ data: cats.map(c => c.value), backgroundColor: cats.map((_, i) => palette[i % palette.length]), borderColor: css('--surface'), borderWidth: 2, hoverOffset: 4 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '68%', animation: false,
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (c: any) => ' ' + money(c.parsed) } } },
+        },
+      });
+      k('donutLegend').innerHTML = cats.map((c, i) =>
+        '<li><span class="sw" style="background:' + palette[i % palette.length] + '"></span><span class="nm">' + esc(c.categoryName || 'Sin categoría') + '</span><span class="pc">' + Math.round((c.value / total) * 100) + '%</span></li>'
+      ).join('');
+
+      // 3. Horizontal bar: products per category
+      const byCount = [...cats].sort((a, b) => b.count - a.count);
+      new Chart(document.getElementById('chartCat') as HTMLCanvasElement, {
+        type: 'bar',
+        data: {
+          labels: byCount.map(c => c.categoryName || 'Sin categoría'),
+          datasets: [{ label: 'Productos', data: byCount.map(c => c.count), backgroundColor: palette[0], borderRadius: 3, barThickness: 12 }],
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false,
+          plugins: { legend: { display: false }, tooltip },
+          scales: {
+            x: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { precision: 0, maxTicksLimit: 5 } },
+            y: { grid: { display: false }, border: { display: false }, ticks: { color: css('--text-2'), autoSkip: false } },
+          },
+        },
+      });
     }
 
-    function checkAlerts() {
-      var btn = document.querySelector('.btn-alert');
-      if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
-      fetch('/api/alerts', { method: 'POST' })
-        .then(function(res) { return res.json(); })
-        .then(function(data) { alert(data.message || 'Alerta procesada'); })
-        .catch(function() { alert('Error al enviar'); })
-        .finally(function() {
-          if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Enviar alerta por email';
-          }
-        });
-    }
-
-    loadDashboard();
+    load();
   </script>
 </Layout>

@@ -5,6 +5,7 @@ if (cookie?.value === 'authenticated') {
 }
 
 // Patrón PRG: el POST siempre redirige, el error viene en ?e=
+import '../styles/global.css';
 import { EMAIL_REGEX } from '@/lib/validation';
 
 import bcrypt from 'bcryptjs';
@@ -99,877 +100,244 @@ const ERR_MESSAGES: Record<string, string> = {
   'not-found':     'Este correo no está registrado en el sistema.',
   'wrong-pass':    'Contraseña incorrecta. Verifica e intenta de nuevo.',
   'locked':        'Cuenta bloqueada temporalmente. Intenta en 15 minutos.',
-  'not-confirmed': '📧 Tu correo no ha sido confirmado. Revisa tu bandeja de entrada.',
+  'not-confirmed': 'Tu correo no ha sido confirmado. Revisa tu bandeja de entrada.',
   'inactive':      'Tu cuenta está desactivada. Contacta al administrador.',
 };
 const errorCode = new URL(Astro.request.url).searchParams.get('e') || '';
 const errorMsg  = ERR_MESSAGES[errorCode] || '';
 ---
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Iniciar Sesión — InvenTrack</title>
+  <title>Iniciar sesión · InvenTrack</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: 'Inter', system-ui, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      background: #07000f;
-    }
-
-    /* ══════════════════════════════════════
-       FONDO ANIMADO
-       ══════════════════════════════════════ */
-    .bg-scene {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      background:
-        radial-gradient(ellipse at 15% 50%, rgba(120, 40, 200, 0.12) 0%, transparent 50%),
-        radial-gradient(ellipse at 85% 20%, rgba(236, 72, 153, 0.08) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 90%, rgba(80, 20, 180, 0.1) 0%, transparent 50%),
-        #07000f;
-    }
-
-    .sphere {
-      position: absolute;
-      border-radius: 50%;
-      animation: floatSphere linear infinite;
-    }
-
-    @keyframes floatSphere {
-      0%   { transform: translateY(0px) rotate(0deg); }
-      33%  { transform: translateY(-20px) rotate(5deg); }
-      66%  { transform: translateY(10px) rotate(-3deg); }
-      100% { transform: translateY(0px) rotate(0deg); }
-    }
-
-    .star {
-      position: absolute;
-      width: 2px;
-      height: 2px;
-      background: white;
-      border-radius: 50%;
-      animation: twinkle ease-in-out infinite;
-    }
-
-    @keyframes twinkle {
-      0%, 100% { opacity: 0.1; transform: scale(1); }
-      50% { opacity: 0.9; transform: scale(1.5); }
-    }
-
-    /* ══════════════════════════════════════
-       CARD PRINCIPAL
-       ══════════════════════════════════════ */
-    .login-wrapper {
-      position: relative;
-      z-index: 10;
-      width: 100%;
-      max-width: 440px;
-      margin: 20px;
-    }
-
-    .login-card {
-      padding: 44px 40px;
-      border-radius: 28px;
-      backdrop-filter: blur(24px);
-      background: linear-gradient(160deg,
-        rgba(120, 50, 255, 0.18) 0%,
-        rgba(80, 20, 200, 0.12) 40%,
-        rgba(40, 10, 120, 0.08) 100%);
-      border: 1px solid rgba(150, 80, 255, 0.15);
-      box-shadow:
-        0 0 80px rgba(120, 50, 255, 0.1),
-        0 30px 60px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      transition: all 0.3s ease;
-    }
-
-    .login-card:hover {
-      border-color: rgba(150, 80, 255, 0.25);
-      box-shadow:
-        0 0 100px rgba(120, 50, 255, 0.15),
-        0 30px 60px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    }
-
-    /* ══════════════════════════════════════
-       LOGO
-       ══════════════════════════════════════ */
-    .logo-area {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: 32px;
-    }
-
-    .logo-icon {
-      width: 64px;
-      height: 64px;
-      border-radius: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-      font-weight: 900;
-      color: #ffffff !important;
-      background: linear-gradient(135deg, #a855f7, #ec4899) !important;
-      box-shadow: 0 8px 40px rgba(168, 85, 247, 0.4);
-      margin-bottom: 20px;
-      animation: logoPulse 3s ease-in-out infinite;
-      -webkit-text-fill-color: #ffffff;
-    }
-
-    @keyframes logoPulse {
-      0%, 100% { box-shadow: 0 8px 40px rgba(168, 85, 247, 0.4); }
-      50% { box-shadow: 0 8px 60px rgba(168, 85, 247, 0.6), 0 0 20px rgba(236, 72, 153, 0.3); }
-    }
-
-    .logo-title {
-      font-size: 28px;
-      font-weight: 800;
-      color: white;
-      letter-spacing: -0.5px;
-    }
-
-    .logo-subtitle {
-      color: rgba(200, 180, 255, 0.4);
-      font-size: 13px;
-      font-weight: 500;
-      margin-top: 4px;
-    }
-
-    /* ══════════════════════════════════════
-       ALERTAS
-       ══════════════════════════════════════ */
-    .alert {
-      padding: 14px 18px;
-      border-radius: 14px;
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      gap: 10px;
-      animation: slideDown 0.4s ease-out;
-    }
-
-    .alert-error {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.2);
-      color: #fca5a5;
-      box-shadow: 0 0 20px rgba(239, 68, 68, 0.08);
-    }
-
-    .alert-icon {
-      font-size: 18px;
-      flex-shrink: 0;
-    }
-
-    @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ══════════════════════════════════════
-       FORMULARIO
-       ══════════════════════════════════════ */
-    .form-group {
-      margin-bottom: 22px;
-    }
-
-    .form-label {
-      display: block;
-      color: rgba(200, 180, 255, 0.7);
-      font-size: 12px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-
-    .input-wrapper {
-      position: relative;
-    }
-
-    .input-icon {
-      position: absolute;
-      left: 16px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 15px;
-      opacity: 0.4;
-      transition: opacity 0.3s;
-      pointer-events: none;
-    }
-
-    .form-input {
-      width: 100%;
-      padding: 15px 16px 15px 46px;
-      border-radius: 14px;
-      border: 1.5px solid rgba(150, 80, 255, 0.1);
-      background: rgba(10, 5, 25, 0.7);
-      color: white;
-      font-size: 14px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 500;
-      transition: all 0.3s ease;
-      outline: none;
-    }
-
-    .form-input::placeholder {
-      color: rgba(150, 130, 200, 0.3);
-      font-weight: 400;
-    }
-
-    .form-input:focus {
-      border-color: rgba(168, 85, 247, 0.5);
-      box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.08), 0 0 30px rgba(168, 85, 247, 0.08);
-      background: rgba(15, 8, 35, 0.9);
-    }
-
-    .form-input:focus + .input-icon,
-    .form-input:focus ~ .input-icon {
-      opacity: 0.8;
-    }
-
-    .form-input.input-error {
-      border-color: rgba(239, 68, 68, 0.5) !important;
-      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.08), 0 0 20px rgba(239, 68, 68, 0.08) !important;
-      animation: shakeInput 0.5s ease-in-out;
-    }
-
-    @keyframes shakeInput {
-      0%, 100% { transform: translateX(0); }
-      20% { transform: translateX(-8px); }
-      40% { transform: translateX(8px); }
-      60% { transform: translateX(-5px); }
-      80% { transform: translateX(5px); }
-    }
-
-    /* Botón ver contraseña */
-    .toggle-pass {
-      position: absolute;
-      right: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      color: rgba(200, 180, 255, 0.3);
-      cursor: pointer;
-      font-size: 16px;
-      padding: 4px;
-      transition: color 0.2s;
-    }
-    .toggle-pass:hover { color: rgba(200, 180, 255, 0.7); }
-
-    /* Validación en tiempo real */
-    .input-status {
-      font-size: 11px;
-      margin-top: 6px;
-      font-weight: 500;
-      display: none;
-    }
+    body { min-height: 100vh; }
+    .auth { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); min-height: 100vh; }
+    .auth-main { display: flex; flex-direction: column; padding: 28px 40px; background: var(--surface); }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; }
+    .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; }
+    .brand-mark svg { width: 16px; height: 16px; }
+    .brand b { font-size: 15px; font-weight: 650; letter-spacing: -0.02em; }
+    .form-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 0; }
+    .form-box { width: 100%; max-width: 360px; }
+    .form-box h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -0.025em; }
+    .form-box > p { margin: 6px 0 24px; color: var(--text-2); font-size: 14px; }
+    .stack { display: grid; gap: 16px; }
+    .pass-wrap { position: relative; }
+    .pass-wrap .input { padding-right: 40px; }
+    .toggle-pass { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+    .input-status { display: none; font-size: 12px; }
     .input-status.show { display: block; }
-    .input-status.valid { color: rgba(52, 211, 153, 0.7); }
-    .input-status.invalid { color: rgba(251, 113, 133, 0.7); }
-
-    /* ══════════════════════════════════════
-       BOTÓN LOGIN
-       ══════════════════════════════════════ */
-    .btn-login {
-      width: 100%;
-      padding: 16px;
-      border: none;
-      border-radius: 14px;
-      font-family: 'Inter', sans-serif;
-      font-size: 15px;
-      font-weight: 700;
-      color: white;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      background: linear-gradient(135deg, #9333ea, #ec4899);
-      box-shadow: 0 6px 30px rgba(147, 51, 234, 0.35);
-      letter-spacing: 0.3px;
-      position: relative;
-      overflow: hidden;
-      margin-top: 8px;
-    }
-
-    .btn-login:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 40px rgba(147, 51, 234, 0.5), 0 0 20px rgba(236, 72, 153, 0.2);
-    }
-
-    .btn-login:active:not(:disabled) {
-      transform: translateY(0);
-    }
-
-    .btn-login:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .btn-login .btn-text { transition: opacity 0.2s; }
-    .btn-login .btn-loader {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-    .btn-login.loading .btn-text { opacity: 0; }
-    .btn-login.loading .btn-loader { opacity: 1; }
-
-    .spinner {
-      width: 22px;
-      height: 22px;
-      border: 3px solid rgba(255,255,255,0.2);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Shimmer en el botón */
-    .btn-login::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-      transition: left 0.5s;
-    }
-    .btn-login:hover::before { left: 100%; }
-
-    /* ══════════════════════════════════════
-       BLOQUEO POR INTENTOS
-       ══════════════════════════════════════ */
-    .lockout-bar {
-      height: 3px;
-      border-radius: 99px;
-      margin-top: 16px;
-      overflow: hidden;
-      background: rgba(255,255,255,0.05);
-      display: none;
-    }
+    .input-status.valid { color: var(--success); }
+    .input-status.invalid { color: var(--danger); }
+    .input.input-error { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+    .btn-login { height: 38px; font-size: 14px; position: relative; }
+    .btn-login .btn-loader { display: none; }
+    .btn-login.loading .btn-text { visibility: hidden; }
+    .btn-login.loading .btn-loader { display: grid; place-items: center; position: absolute; inset: 0; }
+    .row-between { display: flex; justify-content: space-between; align-items: center; }
+    .text-btn { background: none; border: 0; padding: 0; cursor: pointer; font: 500 12.5px/1.4 var(--font-sans); color: var(--accent-text); }
+    .text-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .lockout-bar { display: none; height: 3px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
     .lockout-bar.show { display: block; }
-    .lockout-fill {
-      height: 100%;
-      border-radius: 99px;
-      transition: width 0.4s ease;
-      background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
-    }
-
-    .attempts-text {
-      font-size: 11px;
-      color: rgba(251, 191, 36, 0.6);
-      text-align: center;
-      margin-top: 8px;
-      display: none;
-    }
+    .lockout-fill { height: 100%; background: var(--warning); transition: width .3s; }
+    .attempts-text { display: none; font-size: 12px; color: var(--warning); }
     .attempts-text.show { display: block; }
+    .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 14px; font-size: 12px; color: var(--text-3); }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .demo-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 10px 12px; text-align: left; }
+    .demo-btn b { font-weight: 600; font-size: 13px; }
+    .demo-btn span { font-size: 12px; color: var(--text-3); font-weight: 400; }
+    .auth-foot { font-size: 12px; color: var(--text-3); }
 
-    /* ══════════════════════════════════════
-       DEMO CREDENTIALS
-       ══════════════════════════════════════ */
-    .demo-section {
-      margin-top: 28px;
-      padding-top: 24px;
-      border-top: 1px solid rgba(255,255,255,0.04);
+    .auth-side {
+      position: relative; overflow: hidden;
+      display: flex; flex-direction: column; justify-content: center; gap: 28px;
+      padding: 56px; background: var(--surface-2); border-left: 1px solid var(--border);
     }
+    .auth-side::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 32px 32px; opacity: .55;
+      mask-image: radial-gradient(ellipse 80% 70% at 60% 40%, #000 30%, transparent 75%);
+    }
+    .side-copy { position: relative; max-width: 460px; }
+    .side-copy h2 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -0.03em; }
+    .side-copy p { margin: 12px 0 0; color: var(--text-2); font-size: 14.5px; line-height: 1.6; }
+    .preview { position: relative; max-width: 460px; display: grid; gap: 12px; }
+    .pv-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+    .pv-kpis { display: grid; grid-template-columns: repeat(3, 1fr); }
+    .pv-kpi { padding: 14px 16px; }
+    .pv-kpi + .pv-kpi { border-left: 1px solid var(--border); }
+    .pv-kpi .k { font-size: 11.5px; color: var(--text-3); }
+    .pv-kpi .v { margin-top: 4px; font-size: 18px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .pv-bars { display: flex; align-items: flex-end; gap: 5px; height: 64px; padding: 14px 16px 0; }
+    .pv-bars i { flex: 1; border-radius: 2px 2px 0 0; background: var(--accent); opacity: .85; }
+    .pv-bars i:nth-child(even) { background: var(--chart-2); }
+    .pv-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; font-size: 12.5px; }
+    .pv-row + .pv-row { border-top: 1px solid var(--border); }
+    .pv-row .n { font-weight: 500; }
+    .pv-row .s { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
+    .pv-cap { font-size: 12px; color: var(--text-3); padding: 12px 16px 0; font-weight: 500; }
 
-    .demo-label {
-      color: rgba(200, 180, 255, 0.3);
-      font-size: 10px;
-      text-align: center;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      margin-bottom: 12px;
-    }
-
-    .demo-buttons {
-      display: flex;
-      gap: 8px;
-      justify-content: center;
-    }
-
-    .demo-btn {
-      background: rgba(168, 85, 247, 0.06);
-      border: 1px solid rgba(168, 85, 247, 0.12);
-      color: rgba(196, 181, 253, 0.7);
-      padding: 8px 16px;
-      border-radius: 10px;
-      font-size: 12px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.25s;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .demo-btn:hover {
-      background: rgba(168, 85, 247, 0.15);
-      border-color: rgba(168, 85, 247, 0.3);
-      color: white;
-      transform: translateY(-1px);
-    }
-
-    /* ══════════════════════════════════════
-       TOAST NOTIFICATIONS
-       ══════════════════════════════════════ */
-    .toast-container {
-      position: fixed;
-      top: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 100;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .toast {
-      padding: 14px 20px;
-      border-radius: 14px;
-      font-size: 13px;
-      font-weight: 600;
-      font-family: 'Inter', sans-serif;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      animation: toastIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-      backdrop-filter: blur(16px);
-      min-width: 300px;
-    }
-
-    .toast-error {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.25);
-      color: #fca5a5;
-      box-shadow: 0 8px 30px rgba(239, 68, 68, 0.15);
-    }
-
-    .toast-warning {
-      background: rgba(245, 158, 11, 0.15);
-      border: 1px solid rgba(245, 158, 11, 0.25);
-      color: #fcd34d;
-      box-shadow: 0 8px 30px rgba(245, 158, 11, 0.15);
-    }
-
-    .toast-success {
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.25);
-      color: #6ee7b7;
-      box-shadow: 0 8px 30px rgba(16, 185, 129, 0.15);
-    }
-
-    @keyframes toastIn {
-      from { opacity: 0; transform: translateY(-20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes toastOut {
-      from { opacity: 1; transform: translateY(0); }
-      to { opacity: 0; transform: translateY(-20px); }
-    }
-
-    .toast-progress {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      height: 3px;
-      border-radius: 0 0 14px 14px;
-      animation: toastProgress 3s linear forwards;
-    }
-    .toast-error .toast-progress { background: #ef4444; }
-    .toast-warning .toast-progress { background: #f59e0b; }
-    .toast-success .toast-progress { background: #10b981; }
-
-    @keyframes toastProgress {
-      from { width: 100%; }
-      to { width: 0%; }
-    }
-
-    /* ══════════════════════════════════════
-       LINKS SECUNDARIOS
-       ══════════════════════════════════════ */
-    .auth-links {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 14px;
-    }
-    .auth-link {
-      background: none;
-      border: none;
-      color: rgba(180,140,255,0.6);
-      font-size: 12px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 500;
-      cursor: pointer;
-      padding: 0;
-      transition: color 0.2s;
-      text-decoration: none;
-    }
-    .auth-link:hover { color: rgba(200,160,255,0.95); text-decoration: underline; }
-
-    /* ══════════════════════════════════════
-       MODAL
-       ══════════════════════════════════════ */
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 100;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(8px);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-    }
-    .modal-overlay.open { opacity: 1; pointer-events: all; }
-
-    .modal-box {
-      width: 100%;
-      max-width: 400px;
-      padding: 36px 32px;
-      border-radius: 24px;
-      background: linear-gradient(160deg, rgba(90,30,200,0.25) 0%, rgba(40,10,120,0.15) 100%);
-      border: 1px solid rgba(150,80,255,0.2);
-      box-shadow: 0 0 80px rgba(120,50,255,0.15), 0 30px 60px rgba(0,0,0,0.6);
-      backdrop-filter: blur(24px);
-      transform: scale(0.92) translateY(12px);
-      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease;
-      opacity: 0;
-    }
-    .modal-overlay.open .modal-box { transform: scale(1) translateY(0); opacity: 1; }
-
-    .modal-title {
-      font-size: 20px;
-      font-weight: 800;
-      color: white;
-      margin-bottom: 6px;
-      letter-spacing: -0.3px;
-    }
-    .modal-subtitle {
-      font-size: 13px;
-      color: rgba(200,180,255,0.45);
-      margin-bottom: 24px;
-      line-height: 1.5;
-    }
-    .modal-close {
-      position: absolute;
-      top: 16px; right: 20px;
-      background: none; border: none;
-      color: rgba(200,180,255,0.35);
-      font-size: 22px; cursor: pointer;
-      transition: color 0.2s;
-      line-height: 1;
-    }
-    .modal-close:hover { color: rgba(200,180,255,0.8); }
-    .modal-box { position: relative; }
-
-    .modal-field {
-      margin-bottom: 16px;
-    }
-    .modal-label {
-      display: block;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: rgba(200,180,255,0.6);
-      margin-bottom: 7px;
-    }
-    .modal-input {
-      width: 100%;
-      padding: 13px 16px;
-      border-radius: 12px;
-      border: 1.5px solid rgba(150,80,255,0.12);
-      background: rgba(10,5,25,0.6);
-      color: white;
-      font-size: 14px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 500;
-      transition: all 0.25s;
-      outline: none;
-    }
-    .modal-input::placeholder { color: rgba(150,130,200,0.3); }
-    .modal-input:focus {
-      border-color: rgba(168,85,247,0.5);
-      box-shadow: 0 0 0 3px rgba(168,85,247,0.1);
-      background: rgba(15,8,35,0.9);
-    }
-    .modal-input.error { border-color: rgba(239,68,68,0.5) !important; }
-
-    .modal-btn {
-      width: 100%;
-      padding: 14px;
-      border: none;
-      border-radius: 12px;
-      font-family: 'Inter', sans-serif;
-      font-size: 14px;
-      font-weight: 700;
-      color: white;
-      cursor: pointer;
-      margin-top: 8px;
-      transition: all 0.3s ease;
-      background: linear-gradient(135deg, #9333ea, #ec4899);
-      box-shadow: 0 5px 25px rgba(147,51,234,0.3);
-      position: relative;
-      overflow: hidden;
-    }
-    .modal-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 35px rgba(147,51,234,0.45); }
-    .modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    .modal-msg {
-      font-size: 12px;
-      font-weight: 500;
-      margin-top: 12px;
-      padding: 10px 14px;
-      border-radius: 10px;
-      display: none;
-    }
+    .modal-msg { display: none; font-size: 13px; padding: 10px 12px; border-radius: var(--radius); margin-top: 12px; }
     .modal-msg.show { display: block; }
-    .modal-msg.success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: #6ee7b7; }
-    .modal-msg.error   { background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.2);  color: #fca5a5; }
+    .modal-msg.success { background: var(--success-soft); color: var(--success); }
+    .modal-msg.error { background: var(--danger-soft); color: var(--danger); }
+    .input.error { border-color: var(--danger); }
+    .pass-strength { height: 3px; width: 0; border-radius: 99px; transition: width .2s, background-color .2s; }
 
-    .modal-divider { height: 1px; background: rgba(255,255,255,0.05); margin: 20px 0; }
-    .modal-footer-link {
-      text-align: center;
-      font-size: 12px;
-      color: rgba(200,180,255,0.4);
-    }
-    .modal-footer-link button {
-      background: none; border: none;
-      color: rgba(180,140,255,0.7);
-      font-size: 12px; font-family: 'Inter', sans-serif; font-weight: 600;
-      cursor: pointer; text-decoration: underline;
-    }
-    .modal-footer-link button:hover { color: white; }
-
-    .pass-strength { height: 3px; border-radius: 99px; margin-top: 6px; transition: width 0.3s, background 0.3s; width: 0%; }
-
-    /* ══════════════════════════════════════
-       RESPONSIVE
-       ══════════════════════════════════════ */
-    @media (max-width: 480px) {
-      .login-card { padding: 32px 24px; border-radius: 22px; }
-      .logo-title { font-size: 24px; }
-      .demo-buttons { flex-direction: column; }
+    @media (max-width: 960px) {
+      .auth { grid-template-columns: minmax(0, 1fr); }
+      .auth-side { display: none; }
+      .auth-main { padding: 20px 16px; }
     }
   </style>
 </head>
 <body>
+  <div class="auth">
+    <main class="auth-main">
+      <a class="brand" href="/login">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5Z"/><path d="M4 8.5 12 13l8-4.5M12 13v7"/></svg></span>
+        <b>InvenTrack</b>
+      </a>
 
-  <!-- Toast container -->
-  <div class="toast-container" id="toastContainer"></div>
+      <div class="form-wrap">
+        <div class="form-box">
+          <h1>Inicia sesión</h1>
+          <p>Gestiona existencias, movimientos y alertas de tu almacén.</p>
 
-  <!-- Fondo animado -->
-  <div class="bg-scene">
-    <div class="sphere" style="width:160px;height:160px;top:6%;left:10%;background:radial-gradient(circle at 30% 30%, rgba(180,80,255,0.35), rgba(120,30,200,0.05));animation-duration:8s;"></div>
-    <div class="sphere" style="width:90px;height:90px;top:18%;right:12%;background:radial-gradient(circle at 30% 30%, rgba(236,72,153,0.3), rgba(180,40,200,0.05));animation-duration:6s;animation-delay:1s;"></div>
-    <div class="sphere" style="width:220px;height:220px;bottom:8%;left:5%;background:radial-gradient(circle at 40% 30%, rgba(200,80,255,0.25), rgba(100,20,180,0.03));animation-duration:10s;animation-delay:0.5s;"></div>
-    <div class="sphere" style="width:120px;height:120px;bottom:15%;right:8%;background:radial-gradient(circle at 30% 30%, rgba(160,60,240,0.3), rgba(80,20,160,0.05));animation-duration:7s;animation-delay:2s;"></div>
-    <div class="sphere" style="width:55px;height:55px;top:50%;left:3%;background:radial-gradient(circle at 30% 30%, rgba(200,100,255,0.35), rgba(120,40,200,0.05));animation-duration:5s;animation-delay:1.5s;"></div>
-    <div class="sphere" style="width:70px;height:70px;top:35%;right:20%;background:radial-gradient(circle at 30% 30%, rgba(236,72,153,0.25), rgba(180,40,200,0.05));animation-duration:9s;animation-delay:3s;"></div>
-    <div class="sphere" style="width:180px;height:180px;top:55%;right:3%;background:radial-gradient(circle at 35% 25%, rgba(130,50,220,0.2), rgba(80,20,160,0.03));animation-duration:11s;animation-delay:0.8s;"></div>
-    <div class="sphere" style="width:40px;height:40px;top:80%;left:40%;background:radial-gradient(circle at 30% 30%, rgba(236,72,153,0.35), rgba(180,40,200,0.05));animation-duration:4s;animation-delay:2.5s;"></div>
+          {errorMsg && (
+            <div class="notice danger alert-error" role="alert" style="margin-bottom:16px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
+              <span>{errorMsg}</span>
+            </div>
+          )}
 
-    <!-- Estrellas -->
-    <div class="star" style="top:3%;left:15%;animation-duration:3s;"></div>
-    <div class="star" style="top:10%;left:55%;animation-duration:4s;animation-delay:1s;"></div>
-    <div class="star" style="top:22%;left:30%;animation-duration:2.5s;animation-delay:0.5s;"></div>
-    <div class="star" style="top:38%;left:75%;animation-duration:3.5s;animation-delay:2s;"></div>
-    <div class="star" style="top:52%;left:12%;animation-duration:4.5s;animation-delay:1.5s;"></div>
-    <div class="star" style="top:68%;left:48%;animation-duration:3s;animation-delay:0.8s;"></div>
-    <div class="star" style="top:82%;left:68%;animation-duration:5s;animation-delay:2.5s;"></div>
-    <div class="star" style="top:18%;left:88%;animation-duration:3.2s;animation-delay:1.2s;"></div>
-    <div class="star" style="top:58%;left:38%;animation-duration:4.2s;animation-delay:0.3s;"></div>
-    <div class="star" style="top:88%;left:22%;animation-duration:2.8s;animation-delay:1.8s;"></div>
-    <div class="star" style="top:32%;left:4%;animation-duration:3.8s;animation-delay:2.2s;"></div>
-    <div class="star" style="top:72%;left:82%;animation-duration:4.8s;animation-delay:0.6s;"></div>
-    <div class="star" style="top:6%;left:42%;animation-duration:3.3s;"></div>
-    <div class="star" style="top:45%;left:62%;animation-duration:2.7s;animation-delay:1.4s;"></div>
-    <div class="star" style="top:90%;left:8%;animation-duration:5.2s;animation-delay:0.9s;"></div>
-    <div class="star" style="top:15%;left:72%;animation-duration:3.6s;animation-delay:0.4s;"></div>
-    <div class="star" style="top:75%;left:92%;animation-duration:4.1s;animation-delay:1.7s;"></div>
-    <div class="star" style="top:42%;left:95%;animation-duration:2.9s;animation-delay:2.3s;"></div>
+          <form method="POST" id="loginForm" class="stack" novalidate>
+            <div class="field">
+              <label class="label" for="emailInput">Correo electrónico</label>
+              <input type="email" name="email" id="emailInput" class="input" placeholder="nombre@empresa.com" required autocomplete="username" />
+              <div class="input-status" id="emailStatus"></div>
+            </div>
+
+            <div class="field">
+              <div class="row-between">
+                <label class="label" for="passInput">Contraseña</label>
+                <button type="button" class="text-btn" id="openForgot">Olvidé mi contraseña</button>
+              </div>
+              <div class="pass-wrap">
+                <input type="password" name="password" id="passInput" class="input" placeholder="Tu contraseña" required autocomplete="current-password" />
+                <button type="button" class="icon-btn toggle-pass" id="togglePass" aria-label="Mostrar contraseña"></button>
+              </div>
+              <div class="input-status" id="passStatus"></div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block btn-login" id="loginBtn">
+              <span class="btn-text">Iniciar sesión</span>
+              <span class="btn-loader"><span class="spinner"></span></span>
+            </button>
+
+            <div class="lockout-bar" id="lockoutBar"><div class="lockout-fill" id="lockoutFill" style="width:0%"></div></div>
+            <div class="attempts-text" id="attemptsText"></div>
+          </form>
+
+          <div class="divider">Cuentas de demostración</div>
+          <div class="demo-grid">
+            <button type="button" class="btn btn-secondary demo-btn" data-email="admin@inventrack.com" data-pass="admin123"><b>Administrador</b><span>Acceso completo</span></button>
+            <button type="button" class="btn btn-secondary demo-btn" data-email="demo@inventrack.com" data-pass="demo123"><b>Demo</b><span>Solo lectura</span></button>
+          </div>
+
+          <p style="margin:20px 0 0;font-size:13px;color:var(--text-2)">No tienes cuenta? <button type="button" class="text-btn" id="openRegister" style="font-size:13px">Solicitar acceso</button></p>
+        </div>
+      </div>
+
+      <div class="auth-foot">InvenTrack, gestión de inventario</div>
+    </main>
+
+    <aside class="auth-side" aria-hidden="true">
+      <div class="side-copy">
+        <h2>Sabe qué hay en tu almacén antes de que se acabe.</h2>
+        <p>Existencias en tiempo real, historial de cada movimiento y alertas automáticas cuando un producto llega a su mínimo.</p>
+      </div>
+      <div class="preview">
+        <div class="pv-card">
+          <div class="pv-kpis">
+            <div class="pv-kpi"><div class="k">Valor en almacén</div><div class="v">$184,320</div></div>
+            <div class="pv-kpi"><div class="k">Productos</div><div class="v">32</div></div>
+            <div class="pv-kpi"><div class="k">Bajo mínimo</div><div class="v" style="color:var(--warning)">8</div></div>
+          </div>
+          <div class="pv-cap" style="border-top:1px solid var(--border)">Entradas y salidas, 14 días</div>
+          <div class="pv-bars">
+            <i style="height:40%"></i><i style="height:62%"></i><i style="height:30%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:45%"></i><i style="height:36%"></i><i style="height:70%"></i><i style="height:52%"></i><i style="height:28%"></i><i style="height:90%"></i><i style="height:48%"></i><i style="height:60%"></i><i style="height:38%"></i>
+          </div>
+        </div>
+        <div class="pv-card" style="margin-left:48px">
+          <div class="pv-row"><div><div class="n">Disco de corte metal 4 1/2"</div><div class="s">HE-0204</div></div><span class="badge badge-danger">Agotado</span></div>
+          <div class="pv-row"><div><div class="n">Pintura vinilica blanca 19 L</div><div class="s">PA-0401</div></div><span class="badge badge-warning">2 de 4</span></div>
+        </div>
+      </div>
+    </aside>
   </div>
 
-  <!-- Login Card -->
-  <div class="login-wrapper">
-    <div class="login-card" id="loginCard">
-
-      <!-- Logo -->
-      <div class="logo-area">
-        <div class="logo-icon">I</div>
-        <h1 class="logo-title">InvenTrack</h1>
-        <p class="logo-subtitle">Sistema de Gestión de Inventario</p>
+  <!-- Modal: recuperar contraseña -->
+  <div class="modal-overlay" id="modalForgot" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
+    <div class="modal modal-sm">
+      <div class="modal-head">
+        <div><h2 class="modal-title" id="forgotTitle">Recuperar acceso</h2><p class="modal-sub">Te enviaremos instrucciones para restablecer tu contraseña.</p></div>
+        <button class="icon-btn" id="closeForgot" aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
-
-      <!-- Alerta del servidor -->
-      {errorMsg && (
-        <div class="alert alert-error">
-          <span class="alert-icon">🚫</span>
-          <span>{errorMsg}</span>
+      <div class="modal-body">
+        <div class="field">
+          <label class="label" for="forgotEmail">Correo electrónico</label>
+          <input type="email" id="forgotEmail" class="input" placeholder="nombre@empresa.com" autocomplete="off" />
         </div>
-      )}
-
-      <!-- Form -->
-      <form method="POST" id="loginForm" novalidate>
-
-        <div class="form-group">
-          <label class="form-label">Correo electrónico</label>
-          <div class="input-wrapper">
-            <input
-              type="email"
-              name="email"
-              id="emailInput"
-              class="form-input"
-              placeholder="usuario@inventrack.com"
-              required
-              autocomplete="off"
-            />
-            <span class="input-icon">✉️</span>
-          </div>
-          <div class="input-status" id="emailStatus"></div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Contraseña</label>
-          <div class="input-wrapper">
-            <input
-              type="password"
-              name="password"
-              id="passInput"
-              class="form-input"
-              placeholder="Ingresa tu contraseña"
-              required
-              autocomplete="current-password"
-            />
-            <span class="input-icon">🔒</span>
-            <button type="button" class="toggle-pass" id="togglePass" tabindex="-1">👁️</button>
-          </div>
-          <div class="input-status" id="passStatus"></div>
-        </div>
-
-        <button type="submit" class="btn-login" id="loginBtn">
-          <span class="btn-text">Iniciar Sesión</span>
-          <div class="btn-loader">
-            <div class="spinner"></div>
-          </div>
-        </button>
-
-        <!-- Links secundarios -->
-        <div class="auth-links">
-          <button type="button" class="auth-link" id="openForgot">¿Olvidaste tu contraseña?</button>
-          <button type="button" class="auth-link" id="openRegister">Crear cuenta</button>
-        </div>
-
-        <!-- Barra de intentos -->
-        <div class="lockout-bar" id="lockoutBar">
-          <div class="lockout-fill" id="lockoutFill" style="width: 0%"></div>
-        </div>
-        <div class="attempts-text" id="attemptsText"></div>
-
-      </form>
-
-      <!-- Demo -->
-      <div class="demo-section">
-        <p class="demo-label">Acceso rápido de prueba</p>
-        <div class="demo-buttons">
-          <button type="button" class="demo-btn" onclick="fillDemo('admin@inventrack.com','admin123')">
-            <span>👤</span> Admin
-          </button>
-          <button type="button" class="demo-btn" onclick="fillDemo('demo@inventrack.com','demo123')">
-            <span>🧪</span> Demo
-          </button>
-        </div>
+        <div class="modal-msg" id="forgotMsg"></div>
       </div>
-
+      <div class="modal-foot">
+        <button class="btn btn-ghost" id="forgotToLogin">Volver</button>
+        <button class="btn btn-primary" id="forgotBtn">Enviar instrucciones</button>
+      </div>
     </div>
   </div>
 
-  <!-- ── Modal: Recuperar contraseña ─────────────── -->
-  <div class="modal-overlay" id="modalForgot">
-    <div class="modal-box">
-      <button class="modal-close" id="closeForgot">×</button>
-      <h2 class="modal-title">Recuperar acceso</h2>
-      <p class="modal-subtitle">Ingresa tu correo y te enviaremos instrucciones para restablecer tu contraseña.</p>
-      <div class="modal-field">
-        <label class="modal-label">Correo electrónico</label>
-        <input type="email" id="forgotEmail" class="modal-input" placeholder="tu@correo.com" autocomplete="off" />
+  <!-- Modal: registro -->
+  <div class="modal-overlay" id="modalRegister" role="dialog" aria-modal="true" aria-labelledby="registerTitle">
+    <div class="modal modal-sm">
+      <div class="modal-head">
+        <div><h2 class="modal-title" id="registerTitle">Solicitar acceso</h2><p class="modal-sub">Confirma tu correo y un administrador aprobará la cuenta.</p></div>
+        <button class="icon-btn" id="closeRegister" aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
-      <button class="modal-btn" id="forgotBtn">Enviar instrucciones</button>
-      <div class="modal-msg" id="forgotMsg"></div>
-      <div class="modal-divider"></div>
-      <div class="modal-footer-link">¿Recordaste tu contraseña? <button id="forgotToLogin">Iniciar sesión</button></div>
-    </div>
-  </div>
-
-  <!-- ── Modal: Registrarse ───────────────────────── -->
-  <div class="modal-overlay" id="modalRegister">
-    <div class="modal-box">
-      <button class="modal-close" id="closeRegister">×</button>
-      <h2 class="modal-title">Crear cuenta</h2>
-      <p class="modal-subtitle">Completa el formulario. Un administrador aprobará tu acceso.</p>
-      <div class="modal-field">
-        <label class="modal-label">Nombre completo</label>
-        <input type="text" id="regName" class="modal-input" placeholder="Tu nombre" autocomplete="off" />
+      <div class="modal-body stack">
+        <div class="field"><label class="label" for="regName">Nombre completo</label><input type="text" id="regName" class="input" autocomplete="off" /></div>
+        <div class="field"><label class="label" for="regEmail">Correo electrónico</label><input type="email" id="regEmail" class="input" placeholder="nombre@empresa.com" autocomplete="off" /></div>
+        <div class="field">
+          <label class="label" for="regPass">Contraseña</label>
+          <input type="password" id="regPass" class="input" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
+          <div class="pass-strength" id="passStrengthBar"></div>
+        </div>
+        <div class="field"><label class="label" for="regPassConfirm">Confirmar contraseña</label><input type="password" id="regPassConfirm" class="input" autocomplete="new-password" /></div>
+        <div class="modal-msg" id="registerMsg" style="margin-top:0"></div>
       </div>
-      <div class="modal-field">
-        <label class="modal-label">Correo electrónico</label>
-        <input type="email" id="regEmail" class="modal-input" placeholder="tu@correo.com" autocomplete="off" />
+      <div class="modal-foot">
+        <button class="btn btn-ghost" id="registerToLogin">Ya tengo cuenta</button>
+        <button class="btn btn-primary" id="registerBtn">Crear solicitud</button>
       </div>
-      <div class="modal-field">
-        <label class="modal-label">Contraseña</label>
-        <input type="password" id="regPass" class="modal-input" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
-        <div class="pass-strength" id="passStrengthBar"></div>
-      </div>
-      <div class="modal-field">
-        <label class="modal-label">Confirmar contraseña</label>
-        <input type="password" id="regPassConfirm" class="modal-input" placeholder="Repite tu contraseña" autocomplete="new-password" />
-      </div>
-      <button class="modal-btn" id="registerBtn">Solicitar cuenta</button>
-      <div class="modal-msg" id="registerMsg"></div>
-      <div class="modal-divider"></div>
-      <div class="modal-footer-link">¿Ya tienes cuenta? <button id="registerToLogin">Iniciar sesión</button></div>
     </div>
   </div>
 
   <script is:inline>
+    var EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.2 3M6.6 6.6C3.8 8.3 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M3 3l18 18M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
     var maxAttempts = 5;
     var attempts = parseInt(sessionStorage.getItem('login-attempts') || '0');
     var lockedUntil = parseInt(sessionStorage.getItem('login-locked') || '0');
 
-    // ── Modal helpers ──
     function openModal(id) { document.getElementById(id).classList.add('open'); }
     function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
@@ -979,15 +347,12 @@ const errorMsg  = ERR_MESSAGES[errorCode] || '';
     document.getElementById('closeRegister').addEventListener('click', function() { closeModal('modalRegister'); });
     document.getElementById('forgotToLogin').addEventListener('click', function() { closeModal('modalForgot'); });
     document.getElementById('registerToLogin').addEventListener('click', function() { closeModal('modalRegister'); });
-
-    // Close on overlay click
-    ['modalForgot','modalRegister'].forEach(function(id) {
-      document.getElementById(id).addEventListener('click', function(e) {
-        if (e.target === this) closeModal(id);
-      });
+    ['modalForgot', 'modalRegister'].forEach(function(id) {
+      document.getElementById(id).addEventListener('mousedown', function(e) { if (e.target === this) closeModal(id); });
     });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeModal('modalForgot'); closeModal('modalRegister'); } });
 
-    // ── Forgot password submit ──
+    // ── Recuperar contraseña ──
     var EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
     document.getElementById('forgotBtn').addEventListener('click', async function() {
       var btn = this;
@@ -1002,114 +367,70 @@ const errorMsg  = ERR_MESSAGES[errorCode] || '';
         msgEl.className = 'modal-msg show error';
         return;
       }
-      btn.disabled = true;
-      btn.textContent = 'Enviando...';
+      btn.disabled = true; btn.textContent = 'Enviando...';
       try {
-        var res = await fetch('/api/forgot-password', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ email: email })
-        });
+        var res = await fetch('/api/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email }) });
         var data = await res.json();
-        msgEl.textContent = data.ok
-          ? '✅ Si ese correo existe en el sistema, recibirás instrucciones en breve.'
-          : '❌ ' + (data.message || 'Error al procesar la solicitud.');
+        msgEl.textContent = data.ok ? 'Si ese correo existe en el sistema, recibirás instrucciones en breve.' : (data.message || 'No se pudo procesar la solicitud.');
         msgEl.className = 'modal-msg show ' + (data.ok ? 'success' : 'error');
         if (data.ok) emailEl.value = '';
-      } catch(e) {
-        msgEl.textContent = '❌ Error de conexión. Intenta de nuevo.';
+      } catch (e) {
+        msgEl.textContent = 'Error de conexión. Intenta de nuevo.';
         msgEl.className = 'modal-msg show error';
       }
-      btn.disabled = false;
-      btn.textContent = 'Enviar instrucciones';
+      btn.disabled = false; btn.textContent = 'Enviar instrucciones';
     });
 
-    // ── Register: password strength ──
+    // ── Registro: fuerza de contraseña ──
     document.getElementById('regPass').addEventListener('input', function() {
-      var v = this.value;
-      var score = 0;
+      var v = this.value, score = 0;
       if (v.length >= 8) score++;
       if (/[A-Z]/.test(v)) score++;
       if (/[0-9]/.test(v)) score++;
       if (/[^a-zA-Z0-9]/.test(v)) score++;
       var bar = document.getElementById('passStrengthBar');
-      var colors = ['#ef4444','#f59e0b','#3b82f6','#10b981'];
+      var colors = ['var(--danger)', 'var(--warning)', 'var(--accent)', 'var(--success)'];
       bar.style.width = (score * 25) + '%';
       bar.style.background = colors[score - 1] || 'transparent';
     });
 
-    // ── Register submit ──
-   // ── Register submit (AHORA CONECTADO AL BACKEND) ──
-document.getElementById('registerBtn').addEventListener('click', async function() {
-  var btn = this;
-  var name = document.getElementById('regName').value.trim();
-  var email = document.getElementById('regEmail').value.trim();
-  var pass = document.getElementById('regPass').value;
-  var passC = document.getElementById('regPassConfirm').value;
-  var msgEl = document.getElementById('registerMsg');
+    // ── Registro ──
+    document.getElementById('registerBtn').addEventListener('click', async function() {
+      var btn = this;
+      var name = document.getElementById('regName').value.trim();
+      var email = document.getElementById('regEmail').value.trim();
+      var pass = document.getElementById('regPass').value;
+      var passC = document.getElementById('regPassConfirm').value;
+      var msgEl = document.getElementById('registerMsg');
+      ['regName', 'regEmail', 'regPass', 'regPassConfirm'].forEach(function(id) { document.getElementById(id).classList.remove('error'); });
+      msgEl.className = 'modal-msg';
 
-  ['regName','regEmail','regPass','regPassConfirm'].forEach(function(id) {
-    document.getElementById(id).classList.remove('error');
-  });
-  msgEl.className = 'modal-msg';
+      var err = '';
+      if (!name) { document.getElementById('regName').classList.add('error'); err = 'El nombre es obligatorio.'; }
+      else if (!EMAIL_RE.test(email)) { document.getElementById('regEmail').classList.add('error'); err = 'Ingresa un correo válido.'; }
+      else if (pass.length < 8) { document.getElementById('regPass').classList.add('error'); err = 'La contraseña debe tener al menos 8 caracteres.'; }
+      else if (pass !== passC) { document.getElementById('regPassConfirm').classList.add('error'); err = 'Las contraseñas no coinciden.'; }
+      if (err) { msgEl.textContent = err; msgEl.className = 'modal-msg show error'; return; }
 
-  // Validaciones del cliente
-  var err = '';
-  if (!name) { 
-    document.getElementById('regName').classList.add('error'); 
-    err = 'El nombre es obligatorio.'; 
-  }
-  else if (!EMAIL_RE.test(email)) { 
-    document.getElementById('regEmail').classList.add('error'); 
-    err = 'Ingresa un correo válido.'; 
-  }
-  else if (pass.length < 8) { 
-    document.getElementById('regPass').classList.add('error'); 
-    err = 'La contraseña debe tener al menos 8 caracteres.'; 
-  }
-  else if (pass !== passC) { 
-    document.getElementById('regPassConfirm').classList.add('error'); 
-    err = 'Las contraseñas no coinciden.'; 
-  }
-
-  if (err) { 
-    msgEl.textContent = '❌ ' + err; 
-    msgEl.className = 'modal-msg show error'; 
-    return; 
-  }
-
-  btn.disabled = true; 
-  btn.textContent = 'Creando cuenta...';
-
-  try {
-    var res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name, email: email, password: pass })
+      btn.disabled = true; btn.textContent = 'Creando cuenta...';
+      try {
+        var res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, email: email, password: pass }) });
+        var data = await res.json();
+        if (res.ok && data.success) {
+          msgEl.textContent = 'Cuenta creada. Revisa tu correo para confirmarla; el enlace expira en 24 horas.';
+          msgEl.className = 'modal-msg show success';
+          ['regName', 'regEmail', 'regPass', 'regPassConfirm'].forEach(function(id) { document.getElementById(id).value = ''; });
+          document.getElementById('passStrengthBar').style.width = '0';
+        } else {
+          msgEl.textContent = data.error || 'No se pudo crear la cuenta.';
+          msgEl.className = 'modal-msg show error';
+        }
+      } catch (e) {
+        msgEl.textContent = 'Error de conexión. Intenta de nuevo.';
+        msgEl.className = 'modal-msg show error';
+      }
+      btn.disabled = false; btn.textContent = 'Crear solicitud';
     });
-
-    var data = await res.json();
-
-    if (res.ok && data.success) {
-      msgEl.innerHTML = '✅ <strong>¡Cuenta creada!</strong> Revisa tu correo electrónico para confirmar tu cuenta. El enlace expira en 24 horas.';
-      msgEl.className = 'modal-msg show success';
-      ['regName','regEmail','regPass','regPassConfirm'].forEach(function(id) { 
-        document.getElementById(id).value = ''; 
-      });
-      document.getElementById('passStrengthBar').style.width = '0';
-      showToast('📧 ¡Revisa tu correo para confirmar la cuenta!', 'success');
-    } else {
-      msgEl.textContent = '❌ ' + (data.error || 'Error al crear la cuenta.');
-      msgEl.className = 'modal-msg show error';
-    }
-  } catch(e) {
-    msgEl.textContent = '❌ Error de conexión. Intenta de nuevo.';
-    msgEl.className = 'modal-msg show error';
-  }
-
-  btn.disabled = false; 
-  btn.textContent = 'Solicitar cuenta';
-});
 
     var emailInput = document.getElementById('emailInput');
     var passInput = document.getElementById('passInput');
@@ -1122,89 +443,51 @@ document.getElementById('registerBtn').addEventListener('click', async function(
     var lockoutFill = document.getElementById('lockoutFill');
     var attemptsText = document.getElementById('attemptsText');
 
+    togglePass.innerHTML = EYE;
     updateAttemptsUI();
 
-    // ── Toggle password visibility ──
     togglePass.addEventListener('click', function() {
-      if (passInput.type === 'password') {
-        passInput.type = 'text';
-        togglePass.textContent = '🙈';
-      } else {
-        passInput.type = 'password';
-        togglePass.textContent = '👁️';
-      }
+      var show = passInput.type === 'password';
+      passInput.type = show ? 'text' : 'password';
+      togglePass.innerHTML = show ? EYE_OFF : EYE;
+      togglePass.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
     });
 
-    // ── Validación en tiempo real — Email ──
     emailInput.addEventListener('input', function() {
-      var val = emailInput.value.trim();
       emailInput.classList.remove('input-error');
-      if (val.length === 0) {
-        emailStatus.className = 'input-status';
-        return;
-      }
-      if (val.includes('@') && val.includes('.') && val.length > 5) {
-        emailStatus.textContent = '✓ Formato válido';
-        emailStatus.className = 'input-status show valid';
-      } else {
-        emailStatus.textContent = '✗ Ingresa un email válido';
-        emailStatus.className = 'input-status show invalid';
-      }
+      var val = emailInput.value.trim();
+      if (val.length === 0 || EMAIL_RE.test(val)) { emailStatus.className = 'input-status'; return; }
+      emailStatus.textContent = 'Ingresa un correo válido';
+      emailStatus.className = 'input-status show invalid';
     });
+    emailInput.addEventListener('blur', function() { if (!emailInput.value.trim()) emailStatus.className = 'input-status'; });
 
-    // ── Validación en tiempo real — Password ──
     passInput.addEventListener('input', function() {
-      var val = passInput.value;
       passInput.classList.remove('input-error');
-      if (val.length === 0) {
-        passStatus.className = 'input-status';
-        return;
-      }
-      if (val.length >= 6) {
-        passStatus.textContent = '✓ Longitud correcta';
-        passStatus.className = 'input-status show valid';
-      } else {
-        passStatus.textContent = '✗ Mínimo 6 caracteres';
-        passStatus.className = 'input-status show invalid';
-      }
+      passStatus.className = 'input-status';
     });
 
-    // ── Submit handler ──
     loginForm.addEventListener('submit', function(e) {
-      // Check lockout
       var now = Date.now();
       if (lockedUntil > now) {
         e.preventDefault();
-        var secs = Math.ceil((lockedUntil - now) / 1000);
-        showToast('⏳ Cuenta bloqueada. Espera ' + secs + ' segundos', 'warning');
+        showToast('Demasiados intentos. Espera ' + Math.ceil((lockedUntil - now) / 1000) + ' segundos.', 'error');
         return;
       }
-
-      var email = emailInput.value.trim();
-      var pass = passInput.value;
       var hasError = false;
-
-      if (!email) {
+      if (!emailInput.value.trim()) {
         emailInput.classList.add('input-error');
-        emailStatus.textContent = '✗ El correo es obligatorio';
+        emailStatus.textContent = 'El correo es obligatorio';
         emailStatus.className = 'input-status show invalid';
         hasError = true;
       }
-
-      if (!pass) {
+      if (!passInput.value) {
         passInput.classList.add('input-error');
-        passStatus.textContent = '✗ La contraseña es obligatoria';
+        passStatus.textContent = 'La contraseña es obligatoria';
         passStatus.className = 'input-status show invalid';
         hasError = true;
       }
-
-      if (hasError) {
-        e.preventDefault();
-        showToast('⚠️ Completa todos los campos', 'warning');
-        return;
-      }
-
-      // Show loading
+      if (hasError) { e.preventDefault(); return; }
       loginBtn.classList.add('loading');
       loginBtn.disabled = true;
     });
@@ -1213,131 +496,71 @@ document.getElementById('registerBtn').addEventListener('click', async function(
       if (Date.now() > lockedUntil) {
         lockedUntil = Date.now() + 30000;
         sessionStorage.setItem('login-locked', String(lockedUntil));
-        showToast('🔒 Demasiados intentos. Bloqueado 30 segundos', 'error');
+        showToast('Demasiados intentos. Bloqueado 30 segundos.', 'error');
       }
-      
       loginBtn.disabled = true;
-      
-      var countdownInterval = setInterval(function() {
+      var timer = setInterval(function() {
         var remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
         if (remaining <= 0) {
-          clearInterval(countdownInterval);
+          clearInterval(timer);
           attempts = 0;
           sessionStorage.setItem('login-attempts', '0');
           sessionStorage.removeItem('login-locked');
           lockedUntil = 0;
           updateAttemptsUI();
           loginBtn.disabled = false;
-          showToast('🔓 Puedes intentar de nuevo', 'success');
+          showToast('Ya puedes intentar de nuevo.', 'success');
         } else {
           loginBtn.disabled = true;
-          attemptsText.textContent = '🔒 Bloqueado — ' + remaining + 's restantes';
+          attemptsText.textContent = 'Bloqueado, ' + remaining + ' s restantes';
         }
       }, 1000);
     }
-
-    if (lockedUntil > Date.now()) {
-      startLockout();
-    }
+    if (lockedUntil > Date.now()) startLockout();
 
     function updateAttemptsUI() {
-      if (attempts > 0 && attempts < maxAttempts) {
+      if (attempts > 0) {
         lockoutBar.className = 'lockout-bar show';
-        lockoutFill.style.width = (attempts / maxAttempts * 100) + '%';
+        lockoutFill.style.width = Math.min(100, attempts / maxAttempts * 100) + '%';
         attemptsText.className = 'attempts-text show';
-        attemptsText.textContent = '⚠️ Intento ' + attempts + ' de ' + maxAttempts;
-      } else if (attempts >= maxAttempts) {
-        lockoutBar.className = 'lockout-bar show';
-        lockoutFill.style.width = '100%';
-        attemptsText.className = 'attempts-text show';
+        if (attempts < maxAttempts) attemptsText.textContent = 'Intento ' + attempts + ' de ' + maxAttempts;
       } else {
         lockoutBar.className = 'lockout-bar';
         attemptsText.className = 'attempts-text';
       }
     }
 
-    // ── Toast system ──
     function showToast(message, type) {
-      var container = document.getElementById('toastContainer');
-      var toast = document.createElement('div');
-      toast.className = 'toast toast-' + type;
-      toast.style.position = 'relative';
-      toast.innerHTML = '<span>' + message + '</span><div class="toast-progress"></div>';
-      container.appendChild(toast);
-
-      setTimeout(function() {
-        toast.style.animation = 'toastOut 0.3s ease-in forwards';
-        setTimeout(function() { toast.remove(); }, 300);
-      }, 3000);
+      var stack = document.querySelector('.toast-stack');
+      if (!stack) { stack = document.createElement('div'); stack.className = 'toast-stack'; stack.setAttribute('aria-live', 'polite'); document.body.appendChild(stack); }
+      var t = document.createElement('div');
+      t.className = 'toast ' + (type || '');
+      t.textContent = message;
+      stack.appendChild(t);
+      setTimeout(function() { t.remove(); }, 3500);
     }
 
-    // ── Fill demo credentials ──
-    function fillDemo(email, pass) {
-      emailInput.value = email;
-      passInput.value = pass;
-      emailInput.dispatchEvent(new Event('input'));
-      passInput.dispatchEvent(new Event('input'));
+    document.querySelectorAll('.demo-btn').forEach(function(b) {
+      b.addEventListener('click', function() {
+        emailInput.value = b.getAttribute('data-email');
+        passInput.value = b.getAttribute('data-pass');
+        emailStatus.className = 'input-status';
+        passStatus.className = 'input-status';
+        loginForm.requestSubmit ? loginForm.requestSubmit() : loginForm.submit();
+      });
+    });
 
-      // Visual feedback
-      emailInput.style.borderColor = 'rgba(52, 211, 153, 0.5)';
-      passInput.style.borderColor = 'rgba(52, 211, 153, 0.5)';
-      setTimeout(function() {
-        emailInput.style.borderColor = '';
-        passInput.style.borderColor = '';
-      }, 1000);
-
-      showToast('✅ Credenciales cargadas — dale Iniciar Sesión', 'success');
-    }
-
-    // ── Alerta del servidor: auto-dismiss + dismiss al escribir ──
     var serverError = document.querySelector('.alert-error');
     if (serverError) {
-      // Track attempts only on actual server failure
       attempts++;
       sessionStorage.setItem('login-attempts', String(attempts));
       updateAttemptsUI();
-      
-      if (attempts >= maxAttempts) {
-        startLockout();
-      }
-
-      // Shake inputs
-      emailInput.classList.add('input-error');
-      passInput.classList.add('input-error');
-      setTimeout(function() {
-        emailInput.classList.remove('input-error');
-        passInput.classList.remove('input-error');
-      }, 600);
-
-      // Limpiar la URL para que al recargar no vuelva a mostrar el error
+      if (attempts >= maxAttempts) startLockout();
       history.replaceState(null, '', '/login');
-
-      // Auto-dismiss after 4s
-      function dismissAlert() {
-        if (!serverError.parentNode) return;
-        serverError.style.transition = 'opacity 0.4s ease, transform 0.4s ease, max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease';
-        serverError.style.opacity = '0';
-        serverError.style.transform = 'translateY(-8px)';
-        serverError.style.maxHeight = '0';
-        serverError.style.marginBottom = '0';
-        serverError.style.padding = '0';
-        serverError.style.overflow = 'hidden';
-        setTimeout(function() { if (serverError.parentNode) serverError.remove(); }, 420);
-      }
-      var autoDismissTimer = setTimeout(dismissAlert, 4000);
-
-      // También desaparece al escribir
-      function onType() { clearTimeout(autoDismissTimer); dismissAlert(); }
-      emailInput.addEventListener('input', onType, { once: true });
-      passInput.addEventListener('input', onType, { once: true });
-    }
-
-    // Reset on success (clear attempts after successful login)
-    if (window.location.pathname === '/') {
-      sessionStorage.removeItem('login-attempts');
-      sessionStorage.removeItem('login-locked');
+      var dismiss = function() { if (serverError.parentNode) serverError.remove(); };
+      emailInput.addEventListener('input', dismiss, { once: true });
+      passInput.addEventListener('input', dismiss, { once: true });
     }
   </script>
-
 </body>
 </html>

@@ -5,6 +5,57 @@
 
 ---
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Login](docs/screenshots/01-login.png) | ![Dashboard](docs/screenshots/02-dashboard.png) |
+| **Login** con cuentas de demostración | **Resumen**: KPIs, entradas y salidas de 30 días, valor y productos por categoría, stock bajo |
+| ![Productos](docs/screenshots/03-products.png) | ![Movimiento](docs/screenshots/04-movement-form.png) |
+| **Productos**: búsqueda, filtros por categoría y estado, medidor de existencia | **Registrar movimiento** con vista previa de la existencia resultante |
+| ![XML](docs/screenshots/05-xml-import.png) | ![Alertas](docs/screenshots/06-alerts.png) |
+| **Importar y exportar XML** con resultado de la importación | **Alertas** de stock bajo con vista previa del correo |
+
+<p align="center"><img src="docs/screenshots/07-mobile.png" alt="Vista móvil" width="300"></p>
+
+La interfaz usa un sistema de tokens CSS (`src/styles/global.css`) con un solo color de acento, escala de espaciado de 4 px, pila tipográfica del sistema (sin CDNs de fuentes) y modo oscuro automático según `prefers-color-scheme`.
+
+---
+
+## Run the demo
+
+Requisitos: Docker Desktop y Node 20+. Postgres corre en Docker y la app en el host (consume menos RAM que levantar todo con Compose).
+
+```bash
+# 1. Base de datos (crea esquema, roles y usuarios demo desde db/init.sql)
+docker compose up -d db
+
+# 2. Datos de demostración: 32 productos de ferretería y papelería, 7 categorías,
+#    ~600 movimientos de los últimos 30 días y 8 productos bajo su mínimo
+docker compose exec -T db psql -U inventario -d inventario_db < db/demo-seed.sql
+
+# 3. Variables locales (valores desechables, solo para desarrollo)
+cat > .env <<'ENV'
+DATABASE_URL=postgres://inventario:secret123@localhost:5432/inventario_db
+JWT_SECRET=cambia-esto-en-local
+ALERT_EMAIL=compras@ejemplo.test
+APP_URL=http://localhost:3000
+ENV
+
+# 4. App (exporta las variables para que middleware y páginas usen el mismo JWT_SECRET)
+npm ci
+set -a && . ./.env && set +a
+npm run dev        # http://localhost:3000
+```
+
+Cuentas: `admin@inventrack.com` / `admin123` (acceso completo) y `demo@inventrack.com` / `demo123` (solo lectura). En el login hay botones de acceso rápido.
+
+**Correo en modo registro.** Si `RESEND_API_KEY` no está definida (o si `EMAIL_MODE=log`), no se envía ningún correo: las alertas de stock bajo se escriben en la consola del servidor (destinatario, asunto y texto). La página **Alertas** muestra la vista previa exacta del correo y un botón para generar la alerta. Para enviar correos reales define `RESEND_API_KEY` y `SENDER_EMAIL` con un dominio verificado en Resend.
+
+Para limpiar: `docker compose down -v` (elimina también el volumen de datos).
+
+---
+
 ## 🚀 Levantarlo en 30 segundos (cualquier máquina con Docker)
 
 ```bash

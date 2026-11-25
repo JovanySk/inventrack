@@ -1,372 +1,474 @@
 ---
 import Layout from '../layouts/Layout.astro';
+const role = Astro.cookies.get('inventrack-role')?.value || 'demo';
+const canEdit = role === 'admin' || role === 'empleado';
+const canDelete = role === 'admin';
 ---
 
-<Layout title="Productos">
+<Layout title="Productos" subtitle="Catálogo, existencias y movimientos">
+  <style is:global>
+    .stock-cell { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .stock-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .stock-num small { font-weight: 400; color: var(--text-3); margin-left: 3px; font-size: 11.5px; }
+    .mov-product { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); margin-bottom: 16px; }
+    .mov-product b { font-weight: 600; font-size: 13.5px; }
+    .mov-product span { font-size: 12px; color: var(--text-3); }
+    .mov-preview { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-top: 16px; padding: 12px; border-radius: var(--radius); border: 1px dashed var(--border-strong); text-align: center; }
+    .mov-preview .k { font-size: 11.5px; color: var(--text-3); }
+    .mov-preview .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+    .mov-preview svg { width: 18px; height: 18px; color: var(--text-3); }
+    @media (max-width: 640px) { #categoryFilter { width: 100% !important; } #newBtn { margin-left: 0 !important; width: 100%; } .cell-sub { max-width: 170px; } .segmented { width: 100%; } .row-actions .icon-btn.danger { display: none; } }
+    .type-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .type-picker label { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); cursor: pointer; background: var(--surface); }
+    .type-picker input { position: absolute; opacity: 0; pointer-events: none; }
+    .type-picker b { font-size: 13px; font-weight: 600; }
+    .type-picker span { font-size: 11.5px; color: var(--text-3); }
+    .type-picker label:has(input:checked) { border-color: var(--accent); box-shadow: var(--ring); background: var(--accent-soft); }
+    .type-picker label:has(input:checked) b { color: var(--accent-text); }
+    .type-picker label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  </style>
 
-  <!-- Toolbar -->
-  <div class="flex flex-col sm:flex-row gap-3 mb-8">
-    <div class="relative flex-1">
-      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
-      <input id="searchInput" type="text" placeholder="Buscar por nombre o SKU..." class="input pl-10" />
+  <div class="toolbar">
+    <div class="input-icon grow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="searchInput" type="search" placeholder="Buscar por nombre o SKU" class="input" aria-label="Buscar productos" />
     </div>
-    <select id="categoryFilter" class="input w-52">
+    <select id="categoryFilter" class="select" style="width:220px" aria-label="Filtrar por categoría">
       <option value="">Todas las categorías</option>
     </select>
-    <button onclick="openModal()" class="btn-primary whitespace-nowrap flex items-center gap-2">
-      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-      Nuevo Producto
-    </button>
+    <div class="segmented" role="group" aria-label="Filtrar por estado">
+      <button type="button" data-status="" aria-pressed="true">Todos<span class="count" data-count="all"></span></button>
+      <button type="button" data-status="low" aria-pressed="false">Stock bajo<span class="count" data-count="low"></span></button>
+      <button type="button" data-status="out" aria-pressed="false">Agotados<span class="count" data-count="out"></span></button>
+    </div>
+    {canEdit && (
+      <button id="newBtn" class="btn btn-primary" style="margin-left:auto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Nuevo producto
+      </button>
+    )}
   </div>
 
-  <!-- Tabla -->
-  <div class="card p-0 overflow-hidden glow-violet">
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="border-b border-gray-800">
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
           <tr>
-            <th class="text-left py-4 px-5 text-gray-500 font-semibold text-xs uppercase tracking-wider">Producto</th>
-            <th class="text-left py-4 px-5 text-gray-500 font-semibold text-xs uppercase tracking-wider">SKU</th>
-            <th class="text-left py-4 px-5 text-gray-500 font-semibold text-xs uppercase tracking-wider">Categoría</th>
-            <th class="text-right py-4 px-5 text-gray-500 font-semibold text-xs uppercase tracking-wider">Precio</th>
-            <th class="text-center py-4 px-5 text-gray-500 font-semibold text-xs uppercase tracking-wider">Stock</th>
-            <th class="text-center py-4 px-5 text-gray-500 font-semibold text-xs uppercase tracking-wider">Estado</th>
-            <th class="text-center py-4 px-5 text-gray-500 font-semibold text-xs uppercase tracking-wider">Acciones</th>
+            <th>Producto</th>
+            <th class="hide-sm">SKU</th>
+            <th class="hide-sm">Categoría</th>
+            <th class="r hide-sm">Precio</th>
+            <th class="r">Existencia</th>
+            <th class="hide-sm">Estado</th>
+            <th class="r"><span class="sr-only">Acciones</span></th>
           </tr>
         </thead>
-        <tbody id="productsTable">
-          <tr><td colspan="7" class="text-center py-16 text-gray-500">
-            <div class="w-10 h-10 rounded-2xl border-2 border-violet-500 border-t-transparent animate-spin mx-auto mb-3"></div>
-            Cargando productos...
-          </td></tr>
-        </tbody>
+        <tbody id="productsTable"></tbody>
       </table>
     </div>
-    <div id="tableFooter" class="px-5 py-4 border-t border-gray-800/60 text-xs text-gray-500 font-medium"></div>
+    <div id="tableFooter" class="card-foot"><span class="skeleton" style="width:140px"></span></div>
   </div>
 
   <!-- Modal crear/editar producto -->
-  <div id="modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl shadow-violet-500/10 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
-        <h2 id="modalTitle" class="text-lg font-bold text-white">Nuevo Producto</h2>
-        <button onclick="closeModal()" class="text-gray-500 hover:text-gray-300 text-2xl transition-colors">&times;</button>
+  <div id="modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="modalTitle" class="modal-title">Nuevo producto</h2>
+          <p class="modal-sub">Los campos marcados con * son obligatorios.</p>
+        </div>
+        <button class="icon-btn" data-close="modal" aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
-      <form id="productForm" class="px-6 py-5 space-y-4">
+      <form id="productForm" class="modal-body">
         <input type="hidden" id="productId" />
-        <div class="grid grid-cols-2 gap-4">
-          <div class="col-span-2">
-            <label class="label">Nombre *</label>
-            <input id="pName" type="text" class="input" required placeholder="Ej: Laptop Dell XPS 13" />
+        <div class="form-grid">
+          <div class="field span-2">
+            <label class="label" for="pName">Nombre *</label>
+            <input id="pName" type="text" class="input" required placeholder="Ej. Taladro percutor 1/2 pulgada" />
           </div>
-          <div>
-            <label class="label">SKU</label>
-            <input id="pSku" type="text" class="input" placeholder="Ej: ELEC-001" />
+          <div class="field">
+            <label class="label" for="pSku">SKU</label>
+            <input id="pSku" type="text" class="input" placeholder="Ej. HE-0201" />
           </div>
-          <div>
-            <label class="label">Categoría</label>
-            <select id="pCategory" class="input">
-              <option value="">Sin categoría</option>
-            </select>
+          <div class="field">
+            <label class="label" for="pCategory">Categoría</label>
+            <select id="pCategory" class="select"><option value="">Sin categoría</option></select>
           </div>
-          <div class="col-span-2">
-            <label class="label">Descripción</label>
-            <textarea id="pDesc" class="input h-20 resize-none" placeholder="Descripción del producto..."></textarea>
+          <div class="field span-2">
+            <label class="label" for="pDesc">Descripción</label>
+            <textarea id="pDesc" class="textarea" rows="2" placeholder="Características, medidas o presentación"></textarea>
           </div>
-          <div>
-            <label class="label">Precio (MXN) *</label>
+          <div class="field">
+            <label class="label" for="pPrice">Precio (MXN) *</label>
             <input id="pPrice" type="number" step="0.01" min="0" class="input" required placeholder="0.00" />
           </div>
-          <div>
-            <label class="label">Unidad</label>
-            <select id="pUnit" class="input">
+          <div class="field">
+            <label class="label" for="pUnit">Unidad</label>
+            <select id="pUnit" class="select">
               <option value="pza">Pieza (pza)</option>
               <option value="kg">Kilogramo (kg)</option>
               <option value="lt">Litro (lt)</option>
               <option value="caja">Caja</option>
+              <option value="paquete">Paquete</option>
               <option value="set">Set</option>
+              <option value="cubeta">Cubeta</option>
               <option value="resma">Resma</option>
               <option value="rollo">Rollo</option>
             </select>
           </div>
-          <div>
-            <label class="label">Stock Actual</label>
-            <input id="pStock" type="number" min="0" class="input" placeholder="0" value="0" />
+          <div class="field">
+            <label class="label" for="pStock">Existencia actual</label>
+            <input id="pStock" type="number" min="0" class="input" value="0" />
           </div>
-          <div>
-            <label class="label">Stock Mínimo</label>
-            <input id="pMinStock" type="number" min="0" class="input" placeholder="5" value="5" />
+          <div class="field">
+            <label class="label" for="pMinStock">Existencia mínima</label>
+            <input id="pMinStock" type="number" min="0" class="input" value="5" />
+            <span class="hint">Se genera una alerta al llegar a este nivel.</span>
           </div>
         </div>
+        <div id="formError" class="notice danger" style="display:none;margin-top:14px"></div>
       </form>
-      <div class="flex gap-3 px-6 py-5 border-t border-gray-800 bg-gray-900/50 rounded-b-2xl">
-        <button onclick="closeModal()" class="btn-secondary flex-1">Cancelar</button>
-        <button onclick="saveProduct()" id="saveBtn" class="btn-primary flex-1">Guardar</button>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" data-close="modal">Cancelar</button>
+        <button id="saveBtn" class="btn btn-primary">Guardar producto</button>
       </div>
     </div>
   </div>
 
   <!-- Modal movimiento de stock -->
-  <div id="movModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl shadow-violet-500/10 w-full max-w-md">
-      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
-        <h2 class="text-lg font-bold text-white">Registrar Movimiento</h2>
-        <button onclick="closeMovModal()" class="text-gray-500 hover:text-gray-300 text-2xl transition-colors">&times;</button>
+  <div id="movModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="movTitle">
+    <div class="modal modal-sm">
+      <div class="modal-head">
+        <div>
+          <h2 id="movTitle" class="modal-title">Registrar movimiento</h2>
+          <p class="modal-sub">Actualiza la existencia y deja registro en el historial.</p>
+        </div>
+        <button class="icon-btn" data-close="movModal" aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
-      <div class="px-6 py-5 space-y-4">
+      <div class="modal-body">
         <input type="hidden" id="movProductId" />
-        <p id="movProductName" class="font-semibold text-gray-200 bg-gray-800/60 border border-gray-700/40 px-4 py-3 rounded-xl text-sm"></p>
-        <div>
-          <label class="label">Tipo de movimiento</label>
-          <select id="movType" class="input">
-            <option value="entrada">↑ Entrada (sumar stock)</option>
-            <option value="salida">↓ Salida (restar stock)</option>
-            <option value="ajuste">⟳ Ajuste (establecer stock)</option>
-          </select>
+        <div class="mov-product"><b id="movProductName"></b><span id="movProductSku" class="mono"></span></div>
+        <div class="field" style="margin-bottom:14px">
+          <span class="label">Tipo de movimiento</span>
+          <div class="type-picker">
+            <label><input type="radio" name="movType" value="entrada" checked /><b>Entrada</b><span>Suma unidades</span></label>
+            <label><input type="radio" name="movType" value="salida" /><b>Salida</b><span>Resta unidades</span></label>
+            <label><input type="radio" name="movType" value="ajuste" /><b>Ajuste</b><span>Fija el conteo</span></label>
+          </div>
         </div>
-        <div>
-          <label class="label">Cantidad</label>
-          <input id="movQty" type="number" min="1" class="input" placeholder="Ej: 10" />
+        <div class="form-grid">
+          <div class="field">
+            <label class="label" for="movQty">Cantidad</label>
+            <input id="movQty" type="number" min="1" class="input" placeholder="0" />
+          </div>
+          <div class="field">
+            <label class="label" for="movReason">Motivo</label>
+            <input id="movReason" type="text" class="input" placeholder="Ej. Compra a proveedor" />
+          </div>
         </div>
-        <div>
-          <label class="label">Razón</label>
-          <input id="movReason" type="text" class="input" placeholder="Ej: Compra proveedor, venta, etc." />
+        <div class="mov-preview" aria-live="polite">
+          <div><div class="k">Existencia actual</div><div class="v" id="prevStock">0</div></div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+          <div><div class="k">Después del movimiento</div><div class="v" id="nextStock">0</div></div>
         </div>
+        <div id="movWarn" class="notice warning" style="display:none;margin-top:12px"></div>
       </div>
-      <div class="flex gap-3 px-6 py-5 border-t border-gray-800 bg-gray-900/50 rounded-b-2xl">
-        <button onclick="closeMovModal()" class="btn-secondary flex-1">Cancelar</button>
-        <button onclick="saveMovement()" class="btn-primary flex-1">Registrar</button>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" data-close="movModal">Cancelar</button>
+        <button id="movSaveBtn" class="btn btn-primary">Registrar movimiento</button>
       </div>
     </div>
   </div>
 
-    <script>
-    let allProducts: any[] = [];
-    let categories: any[]  = [];
+  <div id="perm" data-edit={canEdit ? '1' : '0'} data-delete={canDelete ? '1' : '0'} hidden></div>
 
-    // ── Helper para formatear precios ──
-    function fmtPrice(price: any) {
-      return '$' + Number(price).toLocaleString('es-MX', { minimumFractionDigits: 2 });
-    }
+  <script>
+    import { esc, money, int, toast, icons, stateHtml, skeletonRows } from '@/lib/ui';
+
+    const perm = document.getElementById('perm')!.dataset;
+    const canEdit = perm.edit === '1';
+    const canDelete = perm.delete === '1';
+
+    let allProducts: any[] = [];
+    let categories: any[] = [];
+    let status = '';
+    const $ = <T extends HTMLElement = HTMLInputElement>(id: string) => document.getElementById(id) as T;
 
     async function load() {
-      const [prodRes, catRes] = await Promise.all([
-        fetch('/api/products').then(r => r.json()),
-        fetch('/api/categories').then(r => r.json()),
-      ]);
-      allProducts = prodRes;
-      categories  = catRes;
-      populateCategorySelects();
-      renderTable(allProducts);
+      $('productsTable').innerHTML = skeletonRows(7, 8);
+      try {
+        const [prodRes, catRes] = await Promise.all([fetch('/api/products'), fetch('/api/categories')]);
+        if (!prodRes.ok) throw new Error((await prodRes.json()).error || 'Error ' + prodRes.status);
+        allProducts = await prodRes.json();
+        categories = catRes.ok ? await catRes.json() : [];
+        populateCategorySelects();
+        updateCounts();
+        filter();
+      } catch (err: any) {
+        $('productsTable').innerHTML = '<tr><td colspan="7">' + stateHtml('error', 'No se pudieron cargar los productos', err.message) + '</td></tr>';
+        $('tableFooter').innerHTML = '';
+      }
     }
 
     function populateCategorySelects() {
-      const opts = categories.map((c: any) => '<option value="' + c.id + '">' + c.name + '</option>').join('');
-      document.getElementById('categoryFilter')!.innerHTML = '<option value="">Todas las categorías</option>' + opts;
-      document.getElementById('pCategory')!.innerHTML      = '<option value="">Sin categoría</option>' + opts;
+      const opts = categories.map((c: any) => '<option value="' + c.id + '">' + esc(c.name) + '</option>').join('');
+      const cur = $<HTMLSelectElement>('categoryFilter').value;
+      $('categoryFilter').innerHTML = '<option value="">Todas las categorías</option>' + opts;
+      $<HTMLSelectElement>('categoryFilter').value = cur;
+      $('pCategory').innerHTML = '<option value="">Sin categoría</option>' + opts;
     }
 
-    function stockBadge(stock: number, minStock: number) {
-      if (stock === 0)       return '<span class="badge-danger">Sin stock</span>';
-      if (stock <= minStock)  return '<span class="badge-warning">Stock bajo</span>';
-      return '<span class="badge-success">OK</span>';
+    const isLow = (p: any) => p.stock > 0 && p.stock <= p.minStock;
+    const isOut = (p: any) => p.stock === 0;
+
+    function updateCounts() {
+      const set = (k: string, n: number) => { const el = document.querySelector('[data-count="' + k + '"]'); if (el) el.textContent = String(n); };
+      set('all', allProducts.length);
+      set('low', allProducts.filter(isLow).length);
+      set('out', allProducts.filter(isOut).length);
+    }
+
+    function stockBadge(p: any) {
+      if (isOut(p)) return '<span class="badge badge-danger">Agotado</span>';
+      if (isLow(p)) return '<span class="badge badge-warning">Stock bajo</span>';
+      return '<span class="badge badge-success">Disponible</span>';
     }
 
     function renderTable(data: any[]) {
-      const tbody  = document.getElementById('productsTable')!;
-      const footer = document.getElementById('tableFooter')!;
+      const tbody = $('productsTable');
+      const footer = $('tableFooter');
 
       if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-16 text-gray-500">' +
-          '<p class="text-4xl mb-3">📦</p>' +
-          '<p class="font-medium">No se encontraron productos</p>' +
-          '</td></tr>';
-        footer.textContent = '';
+        const filtered = allProducts.length > 0;
+        tbody.innerHTML = '<tr><td colspan="7">' + stateHtml('empty',
+          filtered ? 'Sin resultados' : 'Aún no hay productos',
+          filtered ? 'Prueba con otro término de búsqueda o quita los filtros.' : 'Crea tu primer producto o importa un archivo XML.') + '</td></tr>';
+        footer.innerHTML = '<span>0 productos</span>';
         return;
       }
 
-      let rows = '';
-      for (const p of data) {
-        const safeName = p.name.replace(/'/g, "\\'");
-        const stockColor = p.stock === 0 ? 'text-red-400' : p.stock <= p.minStock ? 'text-amber-400' : 'text-emerald-400';
-
-        rows += '<tr class="border-b border-gray-800/50 hover:bg-gray-800/30 transition-all duration-200 group">';
-
-        // Producto
-        rows += '<td class="py-4 px-5">';
-        rows += '<p class="font-semibold text-gray-200 group-hover:text-white transition-colors">' + p.name + '</p>';
-        rows += '<p class="text-xs text-gray-600 truncate max-w-xs mt-0.5">' + (p.description || '') + '</p>';
-        rows += '</td>';
-
-        // SKU
-        rows += '<td class="py-4 px-5">';
-        rows += '<span class="font-mono text-xs text-violet-400/70 bg-violet-500/10 px-2 py-1 rounded-lg">' + (p.sku || '—') + '</span>';
-        rows += '</td>';
-
-        // Categoría
-        rows += '<td class="py-4 px-5">';
-        if (p.categoryName) {
-          rows += '<span class="badge-info">' + p.categoryName + '</span>';
-        } else {
-          rows += '<span class="text-gray-600 text-xs">—</span>';
+      tbody.innerHTML = data.map((p: any) => {
+        const ratio = p.minStock > 0 ? p.stock / (p.minStock * 3) : 1;
+        const pct = Math.max(isOut(p) ? 0 : 6, Math.min(100, ratio * 100));
+        const fillCls = isOut(p) ? 'out' : isLow(p) ? 'warn' : '';
+        let actions = '';
+        if (canEdit) {
+          actions += '<button class="icon-btn" data-act="move" data-id="' + p.id + '" title="Registrar movimiento" aria-label="Registrar movimiento de ' + esc(p.name) + '">' + icons.swap + '</button>';
+          actions += '<button class="icon-btn" data-act="edit" data-id="' + p.id + '" title="Editar" aria-label="Editar ' + esc(p.name) + '">' + icons.edit + '</button>';
         }
-        rows += '</td>';
-
-        // Precio
-        rows += '<td class="py-4 px-5 text-right font-mono font-semibold text-gray-200">';
-        rows += fmtPrice(p.price);
-        rows += '</td>';
-
-        // Stock
-        rows += '<td class="py-4 px-5 text-center">';
-        rows += '<span class="font-mono font-bold text-lg ' + stockColor + '">' + p.stock + '</span>';
-        rows += '<span class="text-[10px] text-gray-600 ml-1">' + p.unit + '</span>';
-        rows += '</td>';
-
-        // Estado
-        rows += '<td class="py-4 px-5 text-center">' + stockBadge(p.stock, p.minStock) + '</td>';
-
-        // Acciones
-        rows += '<td class="py-4 px-5 text-center">';
-        rows += '<div class="flex items-center justify-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">';
-
-        // Botón movimiento
-        rows += '<button onclick="openMovModal(' + p.id + ', \'' + safeName + '\')" ';
-        rows += 'class="p-2 rounded-lg text-cyan-400 hover:bg-cyan-500/10 border border-transparent hover:border-cyan-500/20 transition-all" title="Movimiento">';
-        rows += '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>';
-        rows += '</button>';
-
-        // Botón editar
-        rows += '<button onclick="editProduct(' + p.id + ')" ';
-        rows += 'class="p-2 rounded-lg text-violet-400 hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20 transition-all" title="Editar">';
-        rows += '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" /></svg>';
-        rows += '</button>';
-
-        // Botón eliminar
-        rows += '<button onclick="deleteProduct(' + p.id + ', \'' + safeName + '\')" ';
-        rows += 'class="p-2 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all" title="Eliminar">';
-        rows += '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>';
-        rows += '</button>';
-
-        rows += '</div></td>';
-        rows += '</tr>';
-      }
-
-      tbody.innerHTML = rows;
+        if (canDelete) {
+          actions += '<button class="icon-btn danger" data-act="delete" data-id="' + p.id + '" title="Eliminar" aria-label="Eliminar ' + esc(p.name) + '">' + icons.trash + '</button>';
+        }
+        return '<tr>' +
+          '<td><div class="cell-title">' + esc(p.name) + '</div><div class="cell-sub">' + esc(p.description || '') + '</div></td>' +
+          '<td class="nowrap hide-sm"><span class="mono subtle">' + esc(p.sku || '-') + '</span></td>' +
+          '<td class="hide-sm">' + (p.categoryName ? '<span class="tag">' + esc(p.categoryName) + '</span>' : '<span class="subtle">Sin categoría</span>') + '</td>' +
+          '<td class="r num nowrap hide-sm">' + esc(money(p.price)) + '</td>' +
+          '<td class="r nowrap"><div class="stock-cell"><span class="stock-num">' + int(p.stock) + '<small>' + esc(p.unit) + '</small></span>' +
+            '<span class="meter-track" title="Mínimo: ' + p.minStock + '"><span class="meter-fill ' + fillCls + '" style="display:block;width:' + pct + '%"></span></span></div></td>' +
+          '<td class="nowrap hide-sm">' + stockBadge(p) + '</td>' +
+          '<td class="r nowrap"><div class="row-actions">' + actions + '</div></td>' +
+        '</tr>';
+      }).join('');
 
       const totalValue = data.reduce((s: number, p: any) => s + Number(p.price) * p.stock, 0);
-      footer.innerHTML = '<div class="flex items-center justify-between">' +
-        '<span>' + data.length + ' producto(s)</span>' +
-        '<span>Valor total: <strong class="text-emerald-400">' + fmtPrice(totalValue) + ' MXN</strong></span>' +
-        '</div>';
+      footer.innerHTML = '<span>' + data.length + ' de ' + allProducts.length + ' productos</span>' +
+        '<span>Valor mostrado: <b class="num" style="color:var(--text)">' + esc(money(totalValue)) + '</b></span>';
     }
 
-    document.getElementById('searchInput')!.addEventListener('input', filter);
-    document.getElementById('categoryFilter')!.addEventListener('change', filter);
-
     function filter() {
-      const search = (document.getElementById('searchInput') as HTMLInputElement).value.toLowerCase();
-      const catId  = (document.getElementById('categoryFilter') as HTMLSelectElement).value;
+      const search = $('searchInput').value.toLowerCase().trim();
+      const catId = $<HTMLSelectElement>('categoryFilter').value;
       renderTable(allProducts.filter((p: any) => {
-        const matchSearch = p.name.toLowerCase().includes(search) || (p.sku || '').toLowerCase().includes(search);
-        const matchCat    = !catId || String(p.categoryId) === catId;
-        return matchSearch && matchCat;
+        const matchSearch = !search || p.name.toLowerCase().includes(search) || (p.sku || '').toLowerCase().includes(search);
+        const matchCat = !catId || String(p.categoryId) === catId;
+        const matchStatus = !status || (status === 'low' ? isLow(p) : isOut(p));
+        return matchSearch && matchCat && matchStatus;
       }));
     }
 
-    function openModal() {
-      (document.getElementById('productForm') as HTMLFormElement).reset();
-      (document.getElementById('productId') as HTMLInputElement).value = '';
-      document.getElementById('modalTitle')!.textContent = 'Nuevo Producto';
-      document.getElementById('modal')!.classList.remove('hidden');
-    }
+    $('searchInput').addEventListener('input', filter);
+    $('categoryFilter').addEventListener('change', filter);
+    document.querySelectorAll<HTMLButtonElement>('.segmented button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        status = btn.dataset.status || '';
+        document.querySelectorAll('.segmented button').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+        filter();
+      });
+    });
 
-    function closeModal() { document.getElementById('modal')!.classList.add('hidden'); }
+    // ── Modales ──
+    const open = (id: string) => $(id).classList.add('open');
+    const close = (id: string) => $(id).classList.remove('open');
+    document.querySelectorAll<HTMLElement>('[data-close]').forEach(b => b.addEventListener('click', (e) => { e.preventDefault(); close(b.dataset.close!); }));
+    ['modal', 'movModal'].forEach(id => $(id).addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) close(id); }));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close('modal'); close('movModal'); } });
+
+    function openNew() {
+      $<HTMLFormElement>('productForm').reset();
+      $('productId').value = '';
+      $('formError').style.display = 'none';
+      $('modalTitle').textContent = 'Nuevo producto';
+      open('modal');
+      setTimeout(() => $('pName').focus(), 50);
+    }
+    $('newBtn')?.addEventListener('click', openNew);
 
     function editProduct(id: number) {
       const p = allProducts.find((x: any) => x.id === id);
       if (!p) return;
-      (document.getElementById('productId') as HTMLInputElement).value   = p.id;
-      (document.getElementById('pName') as HTMLInputElement).value       = p.name;
-      (document.getElementById('pSku') as HTMLInputElement).value        = p.sku || '';
-      (document.getElementById('pDesc') as HTMLTextAreaElement).value    = p.description || '';
-      (document.getElementById('pPrice') as HTMLInputElement).value      = p.price;
-      (document.getElementById('pStock') as HTMLInputElement).value      = p.stock;
-      (document.getElementById('pMinStock') as HTMLInputElement).value   = p.minStock;
-      (document.getElementById('pUnit') as HTMLSelectElement).value      = p.unit || 'pza';
-      (document.getElementById('pCategory') as HTMLSelectElement).value  = p.categoryId || '';
-      document.getElementById('modalTitle')!.textContent = 'Editar Producto';
-      document.getElementById('modal')!.classList.remove('hidden');
+      $('formError').style.display = 'none';
+      $('productId').value = p.id;
+      $('pName').value = p.name;
+      $('pSku').value = p.sku || '';
+      $<HTMLTextAreaElement>('pDesc').value = p.description || '';
+      $('pPrice').value = p.price;
+      $('pStock').value = p.stock;
+      $('pMinStock').value = p.minStock;
+      $<HTMLSelectElement>('pUnit').value = p.unit || 'pza';
+      $<HTMLSelectElement>('pCategory').value = p.categoryId || '';
+      $('modalTitle').textContent = 'Editar producto';
+      open('modal');
     }
 
     async function saveProduct() {
-      const btn = document.getElementById('saveBtn') as HTMLButtonElement;
+      const btn = $<HTMLButtonElement>('saveBtn');
+      const errBox = $('formError');
       btn.disabled = true; btn.textContent = 'Guardando...';
-      const id = (document.getElementById('productId') as HTMLInputElement).value;
+      const id = $('productId').value;
       const body = {
-        name:       (document.getElementById('pName') as HTMLInputElement).value,
-        sku:        (document.getElementById('pSku') as HTMLInputElement).value,
-        description:(document.getElementById('pDesc') as HTMLTextAreaElement).value,
-        price:      (document.getElementById('pPrice') as HTMLInputElement).value,
-        stock:      (document.getElementById('pStock') as HTMLInputElement).value,
-        minStock:   (document.getElementById('pMinStock') as HTMLInputElement).value,
-        unit:       (document.getElementById('pUnit') as HTMLSelectElement).value,
-        categoryId: (document.getElementById('pCategory') as HTMLSelectElement).value || null,
+        name: $('pName').value,
+        sku: $('pSku').value,
+        description: $<HTMLTextAreaElement>('pDesc').value,
+        price: $('pPrice').value,
+        stock: $('pStock').value,
+        minStock: $('pMinStock').value,
+        unit: $<HTMLSelectElement>('pUnit').value,
+        categoryId: $<HTMLSelectElement>('pCategory').value || null,
       };
       try {
-        const url = id ? '/api/products/' + id : '/api/products';
-        const method = id ? 'PUT' : 'POST';
-        const res = await fetch(url, {
-          method: method,
+        const res = await fetch(id ? '/api/products/' + id : '/api/products', {
+          method: id ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
         const data = await res.json();
-        if (!res.ok) { alert(data.error); return; }
-        closeModal(); await load();
-      } catch (err: any) { alert('Error: ' + err.message); }
-      finally { btn.disabled = false; btn.textContent = 'Guardar'; }
+        if (!res.ok) {
+          errBox.textContent = Array.isArray(data.errors) ? data.errors.join(' ') : (data.error || 'No se pudo guardar.');
+          errBox.style.display = 'flex';
+          return;
+        }
+        close('modal');
+        toast(id ? 'Producto actualizado' : 'Producto creado', 'success');
+        await load();
+      } catch (err: any) {
+        errBox.textContent = 'Error de conexión: ' + err.message;
+        errBox.style.display = 'flex';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Guardar producto';
+      }
     }
+    $('saveBtn').addEventListener('click', saveProduct);
+    $('productForm').addEventListener('submit', (e) => { e.preventDefault(); saveProduct(); });
 
-    async function deleteProduct(id: number, name: string) {
-      const confirmation = prompt('⚠️ CUIDADO: Estás a punto de eliminar "' + name + '".\n\nEscribe la palabra "BORRAR" en mayúsculas para confirmar:');
+    async function deleteProduct(id: number) {
+      const p = allProducts.find((x: any) => x.id === id);
+      if (!p) return;
+      const confirmation = prompt('Vas a eliminar "' + p.name + '".\n\nEscribe BORRAR para confirmar:');
       if (confirmation !== 'BORRAR') {
-        if (confirmation !== null) alert('Eliminación cancelada. Debes escribir "BORRAR".');
+        if (confirmation !== null) toast('Eliminación cancelada: escribe BORRAR para confirmar', 'error');
         return;
       }
-      
       const res = await fetch('/api/products/' + id, { method: 'DELETE' });
-      if (res.ok) await load();
-      else { const d = await res.json(); alert(d.error); }
+      if (res.ok) { toast('Producto eliminado', 'success'); await load(); }
+      else { const d = await res.json(); toast(d.error || 'No se pudo eliminar', 'error'); }
     }
 
-    function openMovModal(id: number, name: string) {
-      (document.getElementById('movProductId') as HTMLInputElement).value = String(id);
-      document.getElementById('movProductName')!.textContent = '📦 ' + name;
-      (document.getElementById('movQty') as HTMLInputElement).value = '';
-      (document.getElementById('movReason') as HTMLInputElement).value = '';
-      document.getElementById('movModal')!.classList.remove('hidden');
+    // ── Movimiento ──
+    let movProduct: any = null;
+    const movType = () => (document.querySelector('input[name="movType"]:checked') as HTMLInputElement).value;
+
+    function updatePreview() {
+      if (!movProduct) return;
+      const qty = parseInt($('movQty').value) || 0;
+      const t = movType();
+      const prev = movProduct.stock;
+      let next = prev;
+      if (t === 'entrada') next = prev + qty;
+      if (t === 'salida') next = Math.max(0, prev - qty);
+      if (t === 'ajuste') next = qty;
+      $('prevStock').textContent = int(prev);
+      const nextEl = $('nextStock');
+      nextEl.textContent = int(next);
+      nextEl.style.color = next === 0 ? 'var(--danger)' : next <= movProduct.minStock ? 'var(--warning)' : 'var(--text)';
+      const warn = $('movWarn');
+      if (t === 'salida' && qty > prev) {
+        warn.textContent = 'La salida supera la existencia actual (' + prev + '). Se registrará hasta llegar a cero.';
+        warn.style.display = 'flex';
+      } else if (qty > 0 && next <= movProduct.minStock) {
+        warn.textContent = 'Quedará en o bajo el mínimo (' + movProduct.minStock + '). Se enviará una alerta de stock bajo.';
+        warn.style.display = 'flex';
+      } else {
+        warn.style.display = 'none';
+      }
     }
 
-    function closeMovModal() { document.getElementById('movModal')!.classList.add('hidden'); }
+    function openMovModal(id: number) {
+      movProduct = allProducts.find((x: any) => x.id === id);
+      if (!movProduct) return;
+      $('movProductId').value = String(id);
+      $('movProductName').textContent = movProduct.name;
+      $('movProductSku').textContent = movProduct.sku || '';
+      $('movQty').value = '';
+      $('movReason').value = '';
+      (document.querySelector('input[name="movType"][value="entrada"]') as HTMLInputElement).checked = true;
+      updatePreview();
+      open('movModal');
+      setTimeout(() => $('movQty').focus(), 50);
+    }
+    $('movQty').addEventListener('input', updatePreview);
+    document.querySelectorAll('input[name="movType"]').forEach(r => r.addEventListener('change', updatePreview));
 
     async function saveMovement() {
-      const id     = (document.getElementById('movProductId') as HTMLInputElement).value;
-      const type   = (document.getElementById('movType') as HTMLSelectElement).value;
-      const qty    = (document.getElementById('movQty') as HTMLInputElement).value;
-      const reason = (document.getElementById('movReason') as HTMLInputElement).value;
-      if (!qty || parseInt(qty) <= 0) { alert('Ingresa una cantidad válida'); return; }
-      const res = await fetch('/api/movements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: id, type: type, quantity: qty, reason: reason }),
-      });
-      const data = await res.json();
-      if (!res.ok) { alert(data.error); return; }
-      closeMovModal(); await load();
+      const id = $('movProductId').value;
+      const qty = $('movQty').value;
+      if (!qty || parseInt(qty) <= 0) { toast('Ingresa una cantidad mayor a cero', 'error'); $('movQty').focus(); return; }
+      const btn = $<HTMLButtonElement>('movSaveBtn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/movements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId: id, type: movType(), quantity: qty, reason: $('movReason').value }),
+        });
+        const data = await res.json();
+        if (!res.ok) { toast(data.error || 'No se pudo registrar', 'error'); return; }
+        close('movModal');
+        toast('Movimiento registrado. Nueva existencia: ' + data.newStock, 'success');
+        await load();
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    $('movSaveBtn').addEventListener('click', saveMovement);
+
+    // Delegacion de acciones en la tabla
+    $('productsTable').addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]');
+      if (!btn) return;
+      const id = Number(btn.dataset.id);
+      if (btn.dataset.act === 'move') openMovModal(id);
+      if (btn.dataset.act === 'edit') editProduct(id);
+      if (btn.dataset.act === 'delete') deleteProduct(id);
+    });
+
+    // Permite abrir directamente: /productos?filtro=bajo
+    const q = new URLSearchParams(location.search);
+    if (q.get('filtro') === 'bajo') {
+      status = 'low';
+      document.querySelectorAll('.segmented button').forEach(b => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.status === 'low')));
     }
 
-    Object.assign(window, { openModal, closeModal, editProduct, saveProduct, deleteProduct, openMovModal, closeMovModal, saveMovement });
     load();
   </script>
 </Layout>

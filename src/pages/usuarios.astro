@@ -16,135 +16,39 @@ const allUsers = await db.select({
 const roleLabels: Record<string, string> = {
   admin: 'Administrador',
   empleado: 'Empleado',
-  demo: 'Demo',
+  demo: 'Solo lectura',
 };
+const roleClass: Record<string, string> = { admin: 'badge-accent', empleado: '', demo: '' };
 ---
 
-<Layout title="Gestión de Usuarios">
-  <div class="header-actions">
-    <h2 class="section-title">Usuarios del Sistema</h2>
-  </div>
-
-  <div class="table-container">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Nombre</th>
-          <th>Correo Electrónico</th>
-          <th>Rol</th>
-          <th>Estado</th>
-          <th>Fecha Registro</th>
-        </tr>
-      </thead>
-      <tbody>
-        {allUsers.map((user) => (
+<Layout title="Usuarios" subtitle="Cuentas con acceso al sistema">
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
           <tr>
-            <td class="font-semibold text-white">{user.name}</td>
-            <td class="text-gray-400">{user.email}</td>
-            <td>
-              <span class={`role-badge role-${user.role}`}>
-                {roleLabels[user.role] || user.role}
-              </span>
-            </td>
-            <td>
-              <span class={`status-badge ${user.isActive ? 'active' : 'inactive'}`}>
-                {user.isActive ? 'Activo' : 'Inactivo'}
-              </span>
-            </td>
-            <td class="text-gray-400 text-sm">
-              {new Date(user.createdAt!).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })}
-            </td>
+            <th>Nombre</th>
+            <th>Correo electrónico</th>
+            <th>Rol</th>
+            <th>Estado</th>
+            <th class="hide-sm">Alta</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {allUsers.map((user) => (
+            <tr>
+              <td><span class="cell-title">{user.name}</span></td>
+              <td class="muted">{user.email}</td>
+              <td><span class={`badge no-dot ${roleClass[user.role] ?? ''}`}>{roleLabels[user.role] || user.role}</span></td>
+              <td><span class={`badge ${user.isActive ? 'badge-success' : 'badge-danger'}`}>{user.isActive ? 'Activo' : 'Inactivo'}</span></td>
+              <td class="subtle num hide-sm">
+                {new Date(user.createdAt!).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' })}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-foot"><span>{allUsers.length} usuarios</span><span>Los roles se administran en la base de datos</span></div>
   </div>
 </Layout>
-
-<style is:global>
-  .header-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-  }
-  .section-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: -0.5px;
-  }
-
-  .table-container {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    overflow-x: auto;
-  }
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  .data-table th {
-    text-align: left;
-    padding: 16px;
-    color: var(--muted);
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    border-bottom: 1px solid var(--border);
-    background: rgba(8, 0, 20, 0.4);
-  }
-  .data-table td {
-    padding: 16px;
-    border-bottom: 1px solid rgba(150, 80, 255, 0.08);
-    color: #e2d9f3;
-  }
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: rgba(150, 80, 255, 0.04); }
-
-  .role-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .role-admin {
-    background: rgba(168, 85, 247, 0.15);
-    color: #c084fc;
-    border: 1px solid rgba(168, 85, 247, 0.3);
-  }
-  .role-empleado {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-    border: 1px solid rgba(59, 130, 246, 0.3);
-  }
-  .role-demo {
-    background: rgba(107, 114, 128, 0.15);
-    color: #9ca3af;
-    border: 1px solid rgba(107, 114, 128, 0.3);
-  }
-
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 500;
-  }
-  .status-badge::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-  .status-badge.active { color: #34d399; }
-  .status-badge.active::before { background: #34d399; box-shadow: 0 0 8px #34d399; }
-  .status-badge.inactive { color: #f87171; }
-  .status-badge.inactive::before { background: #f87171; box-shadow: 0 0 8px #f87171; }
-</style>

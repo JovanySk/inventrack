@@ -1,0 +1,130 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { db } from '@/db';
+import { products, categories } from '@/db/schema';
+import { and, eq, sql } from 'drizzle-orm';
+import { renderLowStockAlertEmail, getEmailMode, getAlertRecipient, suggestedOrder } from '@/lib/email';
+
+let lowStock: Array<{ id: number; name: string; sku: string | null; stock: number; minStock: number; unit: string | null; price: string; categoryName: string | null }> = [];
+let loadError = '';
+try {
+  lowStock = await db
+    .select({
+      id: products.id, name: products.name, sku: products.sku, stock: products.stock,
+      minStock: products.minStock, unit: products.unit, price: products.price, categoryName: categories.name,
+    })
+    .from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
+    .where(and(eq(products.isActive, true), sql`${products.stock} <= ${products.minStock}`))
+    .orderBy(sql`${products.stock}::float / NULLIF(${products.minStock}, 0)`, products.name);
+} catch (err: any) {
+  loadError = err.message;
+}
+
+const items = lowStock.map(p => ({ ...p, sku: p.sku ?? '', unit: p.unit ?? 'pza' }));
+const email = renderLowStockAlertEmail(items);
+const mode = getEmailMode();
+const recipient = getAlertRecipient();
+const outCount = items.filter(p => p.stock === 0).length;
+const restockCost = items.reduce((s, p) => s + suggestedOrder(p) * Number(p.price), 0);
+const money = (n: number) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
+const role = Astro.cookies.get('inventrack-role')?.value || 'demo';
+---
+
+<Layout title="Alertas" subtitle="Productos en o bajo su existencia mínima">
+  <style>
+    .alert-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .sum { padding: 14px 16px; }
+    .sum .k { font-size: 12.5px; color: var(--text-2); font-weight: 500; }
+    .sum .v { margin-top: 6px; font-size: 22px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .mail-meta { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 12px; padding: 12px 16px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+    .mail-meta dt { color: var(--text-3); }
+    .mail-meta dd { margin: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mail-frame { display: block; width: 100%; height: 940px; border: 0; background: #f5f6f8; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+    .mode-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+    @media (max-width: 1100px) { .alert-layout { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .summary { grid-template-columns: 1fr 1fr; } .summary > :last-child { grid-column: 1 / -1; } }
+  </style>
+
+  <div class="summary">
+    <div class="card sum"><div class="k">En o bajo el mínimo</div><div class="v" style={items.length ? 'color:var(--warning)' : ''}>{items.length}</div></div>
+    <div class="card sum"><div class="k">Agotados</div><div class="v" style={outCount ? 'color:var(--danger)' : ''}>{outCount}</div></div>
+    <div class="card sum"><div class="k">Costo estimado de reabastecer</div><div class="v">{money(restockCost)}</div></div>
+  </div>
+
+  <div class="alert-layout">
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h3 class="card-title">Productos por reabastecer</h3>
+          <p class="card-sub">Ordenados por qué tan lejos están de su mínimo</p>
+        </div>
+        <a class="link" href="/productos?filtro=bajo">Abrir en Productos</a>
+      </div>
+      {loadError ? (
+        <div class="state"><div class="state-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div><div class="state-title">No se pudieron cargar las alertas</div><div class="state-text">{loadError}</div></div>
+      ) : items.length === 0 ? (
+        <div class="state"><div class="state-icon success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div><div class="state-title">Sin alertas activas</div><div class="state-text">Todos los productos están por encima de su existencia mínima.</div></div>
+      ) : (
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Producto</th><th class="hide-sm">Categoría</th><th class="r">Existencia</th><th class="r">Mínimo</th><th class="r">Sugerido</th></tr></thead>
+            <tbody>
+              {items.map(p => (
+                <tr>
+                  <td><div class="cell-title">{p.name}</div><div class="cell-sub mono">{p.sku}</div></td>
+                  <td class="hide-sm"><span class="tag">{p.categoryName ?? 'Sin categoría'}</span></td>
+                  <td class="r nowrap">
+                    <span class={`badge ${p.stock === 0 ? 'badge-danger' : 'badge-warning'}`}>{p.stock === 0 ? 'Agotado' : `${p.stock} ${p.unit}`}</span>
+                  </td>
+                  <td class="r num subtle">{p.minStock}</td>
+                  <td class="r num" style="font-weight:600">+{suggestedOrder(p)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div class="card-foot">
+        <span class="mode-pill">
+          <span class={`badge ${mode === 'resend' ? 'badge-success' : 'badge-accent'}`}>{mode === 'resend' ? 'Envío por Resend' : 'Modo registro'}</span>
+          {mode === 'resend' ? `Destino: ${recipient}` : 'Sin RESEND_API_KEY: las alertas se escriben en la consola'}
+        </span>
+        {role !== 'demo' && items.length > 0 && <button id="sendAlert" class="btn btn-primary btn-sm">{mode === 'resend' ? 'Enviar alerta ahora' : 'Generar alerta'}</button>}
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h3 class="card-title">Vista previa del correo</h3>
+          <p class="card-sub">Mismo contenido que se envía con cada alerta</p>
+        </div>
+      </div>
+      <dl class="mail-meta">
+        <dt>Para</dt><dd>{recipient}</dd>
+        <dt>Asunto</dt><dd>{email.subject}</dd>
+      </dl>
+      <iframe class="mail-frame" title="Vista previa del correo de alerta" srcdoc={email.html} sandbox=""></iframe>
+    </section>
+  </div>
+
+  <script>
+    import { toast } from '@/lib/ui';
+    const btn = document.getElementById('sendAlert') as HTMLButtonElement | null;
+    btn?.addEventListener('click', async () => {
+      const label = btn.textContent;
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Procesando...';
+      try {
+        const res = await fetch('/api/alerts', { method: 'POST' });
+        const data = await res.json();
+        toast(data.message || data.error || 'Alerta procesada', res.ok ? 'success' : 'error');
+      } catch {
+        toast('Error de conexión al generar la alerta', 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = label;
+      }
+    });
+  </script>
+</Layout>

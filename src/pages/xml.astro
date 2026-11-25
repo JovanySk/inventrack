@@ -1,242 +1,209 @@
 ---
 import Layout from '../layouts/Layout.astro';
+const role = Astro.cookies.get('inventrack-role')?.value || 'demo';
+const canImport = role === 'admin' || role === 'empleado';
 ---
 
-<Layout title="XML">
-<style is:global>
-  .xml-grid { display: grid; gap: 18px; max-width: 760px; }
-
-  .xml-panel {
-    border-radius: 14px; border: 1px solid rgba(150,80,255,0.12);
-    background: rgba(255,255,255,0.02); overflow: hidden;
-  }
-
-  .xml-panel-head {
-    display: flex; align-items: center; gap: 12px;
-    padding: 16px 20px; border-bottom: 1px solid rgba(150,80,255,0.08);
-    background: rgba(150,80,255,0.04);
-  }
-  .xml-icon {
-    width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; font-size: 18px;
-  }
-  .xml-icon-down { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.2); }
-  .xml-icon-up   { background: rgba(168,85,247,0.12);  border: 1px solid rgba(168,85,247,0.2); }
-  .xml-icon-doc  { background: rgba(6,182,212,0.1);    border: 1px solid rgba(6,182,212,0.2); }
-  .xml-head-title { font-size: 14px; font-weight: 600; color: #e2d9f3; }
-  .xml-head-desc  { font-size: 12px; color: rgba(180,150,255,0.45); margin-top: 2px; }
-
-  .xml-panel-body { padding: 18px 20px; }
-
-  /* Code preview */
-  .code-block {
-    background: rgba(5,2,16,0.8); border: 1px solid rgba(150,80,255,0.1);
-    border-radius: 10px; padding: 16px; overflow-x: auto;
-    font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.6;
-    color: rgba(180,150,255,0.6);
-  }
-  .code-block .xml-tag  { color: #93c5fd; }
-  .code-block .xml-attr { color: #c084fc; }
-  .code-block .xml-val  { color: #34d399; }
-  .code-block .xml-text { color: #e2d9f3; }
-  .code-block .xml-comm { color: rgba(180,150,255,0.3); }
-
-  /* Buttons */
-  .btn-export {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 22px; border: none; border-radius: 10px;
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: #fff; font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
-    cursor: pointer; transition: all 0.2s;
-    box-shadow: 0 4px 16px rgba(16,185,129,0.25);
-  }
-  .btn-export:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(16,185,129,0.4); }
-  .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-export svg { width: 15px; height: 15px; }
-
-  .btn-import {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    width: 100%; padding: 11px; border: none; border-radius: 10px;
-    background: linear-gradient(135deg, #a855f7, #ec4899);
-    color: #fff; font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
-    cursor: pointer; transition: all 0.2s; margin-top: 14px;
-    box-shadow: 0 4px 16px rgba(168,85,247,0.25);
-  }
-  .btn-import:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(168,85,247,0.4); }
-  .btn-import:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-import svg { width: 15px; height: 15px; }
-
-  /* Drop zone */
-  .drop-zone {
-    border: 2px dashed rgba(150,80,255,0.25); border-radius: 12px;
-    padding: 32px; text-align: center; cursor: pointer;
-    transition: all 0.2s; margin-bottom: 0;
-  }
-  .drop-zone:hover, .drop-zone.over {
-    border-color: rgba(168,85,247,0.55); background: rgba(168,85,247,0.04);
-  }
-  .drop-icon { font-size: 28px; margin-bottom: 8px; }
-  .drop-text { font-size: 13px; font-weight: 500; color: rgba(180,150,255,0.6); }
-  .drop-hint { font-size: 11px; color: rgba(180,150,255,0.35); margin-top: 4px; }
-
-  .file-selected { display: flex; align-items: center; gap: 10px; }
-  .file-name { font-size: 13px; font-weight: 500; color: #c084fc; }
-  .file-size { font-size: 11px; color: rgba(180,150,255,0.4); }
-  .file-icon { font-size: 24px; }
-
-  /* Import result */
-  .import-result { display: none; border-radius: 12px; padding: 18px; border: 1px solid; margin-top: 14px; }
-  .import-result.ok  { background: rgba(16,185,129,0.07); border-color: rgba(16,185,129,0.2); }
-  .import-result.err { background: rgba(239,68,68,0.07);  border-color: rgba(239,68,68,0.2); }
-  .result-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
-  .result-title.ok  { color: #34d399; }
-  .result-title.err { color: #f87171; }
-  .result-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
-  .result-stat { text-align: center; }
-  .result-stat-num { font-size: 22px; font-weight: 900; }
-  .result-stat-label { font-size: 10px; color: rgba(180,150,255,0.4); margin-top: 2px; }
-  .result-link { display: inline-block; margin-top: 14px; font-size: 12px; font-weight: 600; color: rgba(168,85,247,0.8); text-decoration: none; }
-  .result-link:hover { color: #ec4899; }
-</style>
+<Layout title="Importar y exportar" subtitle="Intercambio de catálogo en formato XML">
+  <style is:global>
+    .xml-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .xml-grid .full { grid-column: 1 / -1; }
+    .drop {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center;
+      min-height: 168px; padding: 24px; border-radius: var(--radius-lg);
+      border: 1.5px dashed var(--border-strong); background: var(--surface-2);
+      cursor: pointer; transition: border-color .15s, background-color .15s;
+    }
+    .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+    .drop-ic { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); color: var(--text-2); margin-bottom: 4px; }
+    .drop-ic svg { width: 18px; height: 18px; }
+    .drop b { font-size: 13.5px; font-weight: 600; }
+    .drop span { font-size: 12.5px; color: var(--text-3); }
+    .file-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .file-row .drop-ic { margin: 0; width: 34px; height: 34px; }
+    .file-row b { font-size: 13px; font-weight: 600; display: block; }
+    .file-row span { font-size: 12px; color: var(--text-3); }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .stat { padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+    .stat .k { font-size: 12px; color: var(--text-3); }
+    .stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+    .code {
+      margin: 0; padding: 14px 16px; overflow-x: auto;
+      font: 12px/1.7 var(--font-mono); color: var(--text-2);
+      background: var(--surface-2); border-top: 1px solid var(--border);
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+    .code .t { color: var(--accent-text); }
+    .code .a { color: var(--chart-4); }
+    .code .s { color: var(--success); }
+    .code .c { color: var(--text-3); }
+    .export-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+    .checklist { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; font-size: 13px; color: var(--text-2); }
+    .checklist li { display: flex; gap: 8px; align-items: flex-start; }
+    .checklist svg { width: 15px; height: 15px; color: var(--success); flex-shrink: 0; margin-top: 2px; }
+    @media (max-width: 900px) { .xml-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
 
   <div class="xml-grid">
+    <section class="card">
+      <div class="card-head">
+        <div><h3 class="card-title">Importar productos</h3><p class="card-sub">Carga masiva desde un archivo .xml de hasta 2 MB</p></div>
+      </div>
+      <div class="card-body">
+        {canImport ? (
+          <>
+            <input type="file" id="xmlFile" accept=".xml,application/xml,text/xml" hidden />
+            <div class="drop" id="dropZone" role="button" tabindex="0" aria-label="Seleccionar archivo XML">
+              <div class="drop-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m-5 5 5-5 5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></div>
+              <b>Arrastra un archivo XML o haz clic para elegirlo</b>
+              <span>Los SKU que ya existen se omiten para evitar duplicados</span>
+            </div>
+            <div id="fileInfo" style="display:none"></div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button id="importBtn" class="btn btn-primary" disabled>Importar productos</button>
+              <button id="clearBtn" class="btn btn-ghost" style="display:none">Quitar archivo</button>
+            </div>
+            <div id="importResult" style="margin-top:14px"></div>
+          </>
+        ) : (
+          <div class="notice accent">Tu rol es de solo lectura. Puedes exportar el inventario, pero no importar.</div>
+        )}
+      </div>
+    </section>
 
-    <!-- Formato XML -->
-    <div class="xml-panel">
-      <div class="xml-panel-head">
-        <div class="xml-icon xml-icon-doc">📄</div>
-        <div>
-          <div class="xml-head-title">Formato del archivo XML</div>
-          <div class="xml-head-desc">Estructura estándar para importar y exportar inventario</div>
-        </div>
+    <section class="card">
+      <div class="card-head">
+        <div><h3 class="card-title">Exportar inventario</h3><p class="card-sub">Archivo XML con todos los productos y un resumen</p></div>
       </div>
-      <div class="xml-panel-body">
-        <div class="code-block">
-<span class="xml-comm">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
-<span class="xml-tag">&lt;inventario</span> <span class="xml-attr">version=</span><span class="xml-val">"1.0"</span> <span class="xml-attr">empresa=</span><span class="xml-val">"Mi Empresa"</span><span class="xml-tag">&gt;</span>
-  <span class="xml-tag">&lt;productos&gt;</span>
-    <span class="xml-tag">&lt;producto&gt;</span>
-      <span class="xml-tag">&lt;nombre&gt;</span><span class="xml-text">Laptop Dell XPS 13</span><span class="xml-tag">&lt;/nombre&gt;</span>
-      <span class="xml-tag">&lt;sku&gt;</span><span class="xml-text">ELEC-001</span><span class="xml-tag">&lt;/sku&gt;</span>
-      <span class="xml-tag">&lt;categoria&gt;</span><span class="xml-text">Electrónica</span><span class="xml-tag">&lt;/categoria&gt;</span>
-      <span class="xml-tag">&lt;precio&gt;</span><span class="xml-text">15999.99</span><span class="xml-tag">&lt;/precio&gt;</span>
-      <span class="xml-tag">&lt;stock&gt;</span><span class="xml-text">8</span><span class="xml-tag">&lt;/stock&gt;</span>
-      <span class="xml-tag">&lt;stockMinimo&gt;</span><span class="xml-text">3</span><span class="xml-tag">&lt;/stockMinimo&gt;</span>
-    <span class="xml-tag">&lt;/producto&gt;</span>
-  <span class="xml-tag">&lt;/productos&gt;</span>
-<span class="xml-tag">&lt;/inventario&gt;</span>
+      <div class="card-body">
+        <div class="export-meta" id="exportMeta">
+          <div class="stat"><div class="k">Productos</div><div class="v" data-m="n"><span class="skeleton" style="width:40px;height:18px"></span></div></div>
+          <div class="stat"><div class="k">Categorías</div><div class="v" data-m="c"><span class="skeleton" style="width:30px;height:18px"></span></div></div>
+          <div class="stat"><div class="k">Stock bajo</div><div class="v" data-m="l"><span class="skeleton" style="width:30px;height:18px"></span></div></div>
         </div>
-      </div>
-    </div>
-
-    <!-- Exportar -->
-    <div class="xml-panel">
-      <div class="xml-panel-head">
-        <div class="xml-icon xml-icon-down">📤</div>
-        <div>
-          <div class="xml-head-title">Exportar inventario</div>
-          <div class="xml-head-desc">Descarga todos los productos en formato XML</div>
-        </div>
-      </div>
-      <div class="xml-panel-body">
-        <button id="exportBtn" class="btn-export" onclick="exportXml()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <ul class="checklist">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Nombre, SKU, categoría, precio, existencia y mínimo de cada producto</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Resumen con valor total y conteo de stock bajo</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Compatible con la importación de esta misma pantalla</li>
+        </ul>
+        <button id="exportBtn" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
           Descargar XML
         </button>
       </div>
-    </div>
+    </section>
 
-    <!-- Importar -->
-    <div class="xml-panel">
-      <div class="xml-panel-head">
-        <div class="xml-icon xml-icon-up">📥</div>
-        <div>
-          <div class="xml-head-title">Importar productos</div>
-          <div class="xml-head-desc">Carga masiva desde archivo XML · SKUs duplicados se ignoran</div>
-        </div>
+    <section class="card full">
+      <div class="card-head plain" style="padding-bottom:14px">
+        <div><h3 class="card-title">Formato esperado</h3><p class="card-sub">Cada producto va dentro de &lt;productos&gt;. La categoría se asigna por nombre; si no existe, el producto queda sin categoría.</p></div>
       </div>
-      <div class="xml-panel-body">
-        <input type="file" id="xmlFile" accept=".xml" style="display:none" onchange="previewFile()" />
-
-        <div class="drop-zone" id="dropZone" onclick="document.getElementById('xmlFile').click()">
-          <div id="dropContent">
-            <div class="drop-icon">📂</div>
-            <div class="drop-text">Haz clic para seleccionar un archivo XML</div>
-            <div class="drop-hint">Solo archivos .xml</div>
-          </div>
-        </div>
-
-        <button id="importBtn" class="btn-import" onclick="importXml()" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Importar Productos
-        </button>
-
-        <div id="importResult" class="import-result"></div>
-      </div>
-    </div>
-
+<pre class="code"><span class="c">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="t">&lt;inventario</span> <span class="a">version</span>=<span class="s">"1.0"</span> <span class="a">empresa</span>=<span class="s">"Ferretería del Centro"</span><span class="t">&gt;</span>
+  <span class="t">&lt;productos&gt;</span>
+    <span class="t">&lt;producto&gt;</span>
+      <span class="t">&lt;nombre&gt;</span>Taladro percutor 1/2" 650 W<span class="t">&lt;/nombre&gt;</span>
+      <span class="t">&lt;sku&gt;</span>HE-0201<span class="t">&lt;/sku&gt;</span>
+      <span class="t">&lt;categoria&gt;</span>Herramientas eléctricas<span class="t">&lt;/categoria&gt;</span>
+      <span class="t">&lt;precio&gt;</span>1849.00<span class="t">&lt;/precio&gt;</span>
+      <span class="t">&lt;stock&gt;</span>8<span class="t">&lt;/stock&gt;</span>
+      <span class="t">&lt;stockMinimo&gt;</span>3<span class="t">&lt;/stockMinimo&gt;</span>
+      <span class="t">&lt;unidad&gt;</span>pza<span class="t">&lt;/unidad&gt;</span>
+    <span class="t">&lt;/producto&gt;</span>
+  <span class="t">&lt;/productos&gt;</span>
+<span class="t">&lt;/inventario&gt;</span></pre>
+    </section>
   </div>
 
   <script>
-    async function exportXml() {
+    import { esc, int, toast, icons } from '@/lib/ui';
+
+    const FILE_IC = '<div class="drop-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/></svg></div>';
+
+    // Metadatos de exportacion
+    (async () => {
+      try {
+        const [p, c] = await Promise.all([fetch('/api/products').then(r => r.json()), fetch('/api/categories').then(r => r.json())]);
+        const set = (k: string, v: string) => { const el = document.querySelector('[data-m="' + k + '"]'); if (el) el.textContent = v; };
+        set('n', int(p.length));
+        set('c', int(c.length));
+        set('l', int(p.filter((x: any) => x.stock <= x.minStock).length));
+      } catch { /* metadatos opcionales */ }
+    })();
+
+    document.getElementById('exportBtn')!.addEventListener('click', async () => {
       const btn = document.getElementById('exportBtn') as HTMLButtonElement;
-      btn.disabled = true; btn.textContent = 'Generando...';
+      const html = btn.innerHTML;
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Generando...';
       try {
-        const res  = await fetch('/api/xml');
+        const res = await fetch('/api/xml');
+        if (!res.ok) throw new Error('Error ' + res.status);
         const blob = await res.blob();
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
-        a.download = res.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1]
-                     ?? `inventario_${new Date().toISOString().split('T')[0]}.xml`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = res.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] ?? 'inventario.xml';
         a.click(); URL.revokeObjectURL(url);
-      } catch (err: any) { alert('Error al exportar: ' + err.message); }
-      finally { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Descargar XML`; }
-    }
+        toast('Archivo XML generado', 'success');
+      } catch (err: any) { toast('No se pudo exportar: ' + err.message, 'error'); }
+      finally { btn.disabled = false; btn.innerHTML = html; }
+    });
 
-    function previewFile() {
-      const file = (document.getElementById('xmlFile') as HTMLInputElement).files?.[0];
-      if (!file) return;
-      document.getElementById('dropContent')!.innerHTML = `
-        <div class="file-selected">
-          <span class="file-icon">📄</span>
-          <div>
-            <div class="file-name">${file.name}</div>
-            <div class="file-size">${(file.size / 1024).toFixed(1)} KB</div>
-          </div>
-        </div>`;
-      (document.getElementById('importBtn') as HTMLButtonElement).disabled = false;
-    }
+    const input = document.getElementById('xmlFile') as HTMLInputElement | null;
+    const drop = document.getElementById('dropZone');
+    if (input && drop) {
+      const importBtn = document.getElementById('importBtn') as HTMLButtonElement;
+      const clearBtn = document.getElementById('clearBtn') as HTMLButtonElement;
+      const info = document.getElementById('fileInfo')!;
+      const result = document.getElementById('importResult')!;
+      let file: File | null = null;
 
-    async function importXml() {
-      const file = (document.getElementById('xmlFile') as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const btn = document.getElementById('importBtn') as HTMLButtonElement;
-      btn.disabled = true; btn.textContent = 'Importando...';
-      const form = new FormData(); form.append('file', file);
-      try {
-        const res  = await fetch('/api/xml', { method: 'POST', body: form });
-        const data = await res.json();
-        const r    = document.getElementById('importResult')!;
-        r.style.display = 'block';
-        if (res.ok && data.ok) {
-          r.className = 'import-result ok';
-          r.innerHTML = `<div class="result-title ok">✓ Importación exitosa</div>
-            <div class="result-stats">
-              <div class="result-stat"><div class="result-stat-num" style="color:#34d399">${data.imported}</div><div class="result-stat-label">Importados</div></div>
-              <div class="result-stat"><div class="result-stat-num" style="color:#fbbf24">${data.skipped}</div><div class="result-stat-label">Ignorados (SKU dup.)</div></div>
-              <div class="result-stat"><div class="result-stat-num" style="color:#e2d9f3">${data.total}</div><div class="result-stat-label">Total en archivo</div></div>
-            </div>
-            <a href="/productos" class="result-link">→ Ver productos</a>`;
-        } else {
-          r.className = 'import-result err';
-          r.innerHTML = `<div class="result-title err">✗ Error en la importación</div>
-            <p style="font-size:13px;color:#fca5a5">${data.error ?? 'Error desconocido'}</p>`;
+      const setFile = (f: File | null) => {
+        file = f;
+        result.innerHTML = '';
+        if (!f) {
+          drop.style.display = ''; info.style.display = 'none'; clearBtn.style.display = 'none';
+          importBtn.disabled = true; input.value = '';
+          return;
         }
-      } catch (err: any) { alert('Error: ' + err.message); }
-      finally { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Importar Productos`; }
-    }
+        if (!/\.xml$/i.test(f.name)) { toast('Selecciona un archivo con extensión .xml', 'error'); return setFile(null); }
+        drop.style.display = 'none'; info.style.display = 'block'; clearBtn.style.display = '';
+        info.innerHTML = '<div class="file-row">' + FILE_IC + '<div><b>' + esc(f.name) + '</b><span>' + (f.size / 1024).toFixed(1) + ' KB, listo para importar</span></div></div>';
+        importBtn.disabled = false;
+      };
 
-    Object.assign(window, { exportXml, importXml, previewFile });
+      drop.addEventListener('click', () => input.click());
+      drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+      input.addEventListener('change', () => setFile(input.files?.[0] ?? null));
+      drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+      drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); setFile(e.dataTransfer?.files?.[0] ?? null); });
+      clearBtn.addEventListener('click', () => setFile(null));
+
+      importBtn.addEventListener('click', async () => {
+        if (!file) return;
+        importBtn.disabled = true; importBtn.innerHTML = '<span class="spinner"></span>Importando...';
+        const form = new FormData(); form.append('file', file);
+        try {
+          const res = await fetch('/api/xml', { method: 'POST', body: form });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            result.innerHTML =
+              '<div class="notice success">' + icons.check + '<div><b>Importación completada.</b> ' + data.imported + ' productos nuevos agregados al catálogo.</div></div>' +
+              '<div class="stats">' +
+                '<div class="stat"><div class="k">Importados</div><div class="v" style="color:var(--success)">' + int(data.imported) + '</div></div>' +
+                '<div class="stat"><div class="k">Omitidos (SKU existente)</div><div class="v">' + int(data.skipped) + '</div></div>' +
+                '<div class="stat"><div class="k">En el archivo</div><div class="v">' + int(data.total) + '</div></div>' +
+              '</div>' +
+              '<div style="margin-top:12px"><a class="link" href="/productos">Ver productos</a></div>';
+          } else {
+            result.innerHTML = '<div class="notice danger">' + icons.alert + '<div><b>No se pudo importar.</b> ' + esc(data.error ?? 'Error desconocido') + '</div></div>';
+          }
+        } catch (err: any) {
+          result.innerHTML = '<div class="notice danger">' + icons.alert + '<div>Error de conexión: ' + esc(err.message) + '</div></div>';
+        } finally {
+          importBtn.disabled = false; importBtn.textContent = 'Importar productos';
+        }
+      });
+    }
   </script>
 </Layout>
